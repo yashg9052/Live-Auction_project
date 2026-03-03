@@ -1,15 +1,14 @@
 import mongoose, { Document, Schema } from "mongoose";
 
 export interface IUser extends Document {
+  _id:mongoose.Types.ObjectId
   email: string;
   password: string;
   username: string;
-  role:string;
-  bids: mongoose.Types.ObjectId[];
+  role: string;
   createdAt: Date;
   updatedAt: Date;
 }
-
 const UserSchema: Schema<IUser> = new Schema(
   {
     email: {
@@ -24,6 +23,7 @@ const UserSchema: Schema<IUser> = new Schema(
       required: true,
     },
     role:{
+      type:String,
       enum:["admin","user"],
       default:"user"
     },
@@ -31,12 +31,7 @@ const UserSchema: Schema<IUser> = new Schema(
       type: String,
       required: true,
     },
-    bids: [
-      {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Bid",
-      },
-    ],
+    
   },
   {
     timestamps: true,

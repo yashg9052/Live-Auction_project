@@ -1,7 +1,7 @@
 import axios from "axios";
+import mongoose from "mongoose"
 import dotenv from "dotenv";
 dotenv.config();
-import mongoose from "mongoose";
 import type { NextFunction, Request, Response } from "express";
 export interface IUser extends Document {
   _id:mongoose.Types.ObjectId

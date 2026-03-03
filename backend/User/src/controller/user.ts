@@ -1,101 +1,185 @@
 import TryCatch from "../config/TryCatch.js";
 import type { Request, Response } from "express";
 import bcrypt from "bcrypt";
-import { User } from "../Model/UserModel.js";
+import { User, type IUser } from "../Model/UserModel.js";
 import { generateToken } from "../config/GenerateToken.js";
+import { publishToQueue } from "../config/rabbitMq.js";
+import type { AuthenticatedRequest } from "../Middleware/isAuth.js";
+import { redisClient } from "../index.js";
 
-// Register Controller
 export const register = TryCatch(async (req: Request, res: Response) => {
-    
-  const {email, password, username } = req.body;
+  const { name, email, password } = req.body;
 
-  // Validate input
-  if (!email || !password || !username) {
-    return res.status(400).json({
-      message: "Email, password, and username are required",
-    });
+  if (!email || !password || !name) {
+    return res
+      .status(400)
+      .json({ message: "Email, password and username are required" });
   }
-//   function isValidPassword(password: string): boolean {
-//     return password.length >= 10;
-//   }
-//   if (isValidPassword(password) === false) {
-//     return res.status(400).json({
-//       message: "Password must be atleast 10 characters long",
-//     });
-//   }
 
-  // Check if user already exists
-  const existingUser = await User.findOne({ email });
+  const existingUser :IUser|null= await User.findOne({ email });
+  
   if (existingUser) {
-    return res.status(409).json({
-      message: "User with this email already exists",
-    });
+    return res.status(400).json({ message: "User already exists" });
   }
 
-  // Hash password
-  const salt = await bcrypt.genSalt(10);
-  const hashedPassword = await bcrypt.hash(password, salt);
+  const hashedPassword = await bcrypt.hash(password, 10);
 
-  // Create new user
-  const newUser = new User({
+  const user = await User.create({
+    username: name,
     email,
-    username,
     password: hashedPassword,
   });
 
-  await newUser.save();
-
-  // Generate token
-  const token = generateToken(newUser);
+  const token = generateToken(user._id);
 
   return res.status(201).json({
-    message: "User registered successfully",
-    token,
+    message: "User created successfully",
     user: {
-      id: newUser._id,
-      email: newUser.email,
-      username: newUser.username,
+      _id: user._id,
+      email: user.email,
+      username: user.username,
+      role: user.role,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     },
+    token,
   });
 });
 
-// Login Controller
 export const login = TryCatch(async (req: Request, res: Response) => {
   const { email, password } = req.body;
 
-  // Validate input
   if (!email || !password) {
-    return res.status(400).json({
-      message: "Email and password are required",
-    });
+    return res.status(400).json({ message: "Email and password are required" });
   }
 
-  // Find user by email
-  const user = await User.findOne({ email });
+  const user :IUser|null= await User.findOne({ email });
+
   if (!user) {
-    return res.status(401).json({
-      message: "Invalid email or password",
-    });
+    return res.status(404).json({ message: "Invalid credentials" });
   }
 
-  // Compare passwords
-  const isPasswordValid = await bcrypt.compare(password, user.password);
-  if (!isPasswordValid) {
-    return res.status(401).json({
-      message: "Invalid email or password",
-    });
+  const isMatch = await bcrypt.compare(password, user.password);
+
+  if (!isMatch) {
+    return res.status(401).json({ message: "Invalid credentials" });
   }
 
-  // Generate token
-  const token = generateToken(user);
+  const token = generateToken(user._id.toString());
 
   return res.status(200).json({
-    message: "Login successful",
-    token,
+    message: "Logged in successfully",
     user: {
-      id: user._id,
+      _id: user._id,
       email: user.email,
       username: user.username,
+      role: user.role,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     },
+    token,
+  });
+});
+
+export const getProfile = TryCatch(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const user= req.user;
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.status(200).json({
+      message: "Profile retrieved successfully",
+      user: {
+        _id: user._id.toString(),
+        email: user.email,
+        username: user.username,
+        role: user.role,
+        createdAt: user.createdAt,
+        updatedAt: user.updatedAt,
+      },
+    });
+  }
+);
+
+export const ForgotPassword = TryCatch(async (req: Request, res: Response) => {
+  const { email } = req.body;
+
+  if (!email) {
+    return res.status(400).json({ message: "Email is required" });
+  }
+
+  const user :IUser |null= await User.findOne({ email });
+
+  if (!user) {
+    return res
+      .status(200)
+      .json({ message: `There is no account registered with the email : ${email}` });
+  }
+
+  const rateLimitKey = `otp:ratelimit:${email}`;
+  const rateLimit = await redisClient.get(rateLimitKey);
+
+  if (rateLimit) {
+    return res.status(429).json({
+      message: "Too many requests. Please wait before requesting a new OTP",
+    });
+  }
+
+  const otp = Math.floor(100000 + Math.random() * 900000).toString();
+  const otpKey = `otp:${email}`;
+
+  await redisClient.set(otpKey, otp, { EX: 300 });
+  await redisClient.set(rateLimitKey, "true", { EX: 60 });
+
+  const message = {
+    to: email,
+    subject: "Your OTP Code",
+    body: `Your OTP is ${otp}. It is valid for 5 minutes.`,
+  };
+
+  await publishToQueue("auction-send-otp", message);
+
+  return res.status(200).json({
+    message: `OTP has been sent to ${email}`,
+  });
+});
+
+export const verifyUser = TryCatch(async (req: Request, res: Response) => {
+  const { email, otp: enteredOtp } = req.body;
+
+  if (!email || !enteredOtp) {
+    return res.status(400).json({ message: "Email and OTP are required" });
+  }
+
+  const otpKey = `otp:${email}`;
+  const storedOtp = await redisClient.get(otpKey);
+
+  if (!storedOtp || storedOtp !== enteredOtp) {
+    return res.status(400).json({ message: "Invalid or expired OTP" });
+  }
+
+  await redisClient.del(otpKey);
+
+  const user:IUser|null = await User.findOne({ email });
+
+  if (!user) {
+    return res.status(404).json({ message: "User not found" });
+  }
+
+  const token = generateToken(user._id.toString());
+
+  return res.status(200).json({
+    message: "User verified successfully",
+    user: {
+      _id: user._id,
+      email: user.email,
+      username: user.username,
+      role: user.role,
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
+    },
+    token,
   });
 });

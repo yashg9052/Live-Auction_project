@@ -7,21 +7,7 @@ export const sql = neon(process.env.DB_URL as string);
 export async function initDB() {
   try {
     await sql`
-      DO $$ BEGIN
-        CREATE TYPE auction_status_enum AS ENUM (
-          'ACTIVE',
-          'ENDED',
-          'DELETED',
-          'PAUSED',
-          'DELETED'
-        );
-      EXCEPTION
-        WHEN duplicate_object THEN null;
-      END $$;
-    `;
-
-    await sql`
-      CREATE TABLE IF NOT EXISTS auction_items (
+        CREATE TABLE IF NOT EXISTS auction_items (
         id SERIAL PRIMARY KEY,
 
         title VARCHAR(255) NOT NULL,
@@ -33,22 +19,19 @@ export async function initDB() {
         current_highest_bid_time TIMESTAMP,
 
 
-
-        images TEXT[],
+        images TEXT[], 
 
         category TEXT NOT NULL,
 
-        auction_status auction_status_enum DEFAULT 'ACTIVE',
+        auction_status TEXT DEFAULT 'ACTIVE',
 
         ends_at TIMESTAMP NOT NULL,
 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-    `;
-  
-    console.log("Database initialized successfully");
+);
+`;
   } catch (error) {
-    console.error("Error initializing DB:", error);
+    console.log("Error initDb", error);
   }
 }

@@ -13,11 +13,11 @@ export const connectRabbitMq = async () => {
 
     channel = await connection.createChannel();
     console.log("✅Conneceted to rabbitmq");
+    console.log("Bid Queue has started")
   } catch (error) {
     console.log("Failed to connect to rabbitmq", error);
   }
 };
-
 export const publishToQueue = async (queuename: string, message: any) => {
   if (!channel) {
     console.log("Rabbitmq channel is not initialized");
@@ -28,3 +28,29 @@ export const publishToQueue = async (queuename: string, message: any) => {
     persistent: true,
   });
 };
+
+// export const consumeFromQueue = async (
+//   queueName: string,
+//   callback: (message: any) => Promise<void>
+// ) => {
+//   if (!channel) {
+//     console.log("Rabbitmq channel is not initialized");
+//     return;
+//   }
+
+//   await channel.assertQueue(queueName, { durable: true });
+  
+  
+//   channel.consume(queueName, async (message) => {
+//     if (!message) return;
+    
+//     try {
+//       const content = JSON.parse(message.content.toString());
+//       await callback(content);
+//       channel.ack(message);
+//     } catch (error) {
+//       console.log("Error processing message:", error);
+//       channel.nack(message, false, true);
+//     }
+//   });
+// };

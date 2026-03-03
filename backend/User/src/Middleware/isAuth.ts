@@ -1,10 +1,19 @@
 import type { NextFunction, Request, Response } from "express";
-import type { IUser } from "../Model/UserModel.js";
+import { User, type IUser } from "../Model/UserModel.js";
 import jwt, { type JwtPayload } from "jsonwebtoken";
-
-export interface AuthenticatedRequest extends Request {
-  user?: IUser | null;
+import type mongoose from "mongoose";
+export interface MUser extends Document {
+  _id: mongoose.Types.ObjectId;
+  email: string;
+  username: string;
+  role: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
+export interface AuthenticatedRequest extends Request {
+  user?: MUser | null;
+}
+
 export const isAuth = async (
   req: AuthenticatedRequest,
   res: Response,
@@ -16,23 +25,32 @@ export const isAuth = async (
       res.status(403).json({
         message: "Please Login",
       });
-
       return;
     }
-    
 
-    const decodedValue = jwt.verify(
+    const decoded = jwt.verify(
       token,
       process.env.JWT_SECRET as string,
     ) as JwtPayload;
+    console.log("Decoded JWT:", decoded.userId);
 
-    if (!decodedValue || !decodedValue.user) {
+    if (!decoded || !decoded.userId) {
       res.status(401).json({
         message: "Invalid token",
       });
       return;
     }
-    req.user = decodedValue.user;
+
+    const user = await User.findById(decoded.userId).select("-password");
+
+    if (!user) {
+      res.status(401).json({
+        message: "User not found",
+      });
+      return;
+    }
+
+    req.user = user;
     next();
   } catch (error) {
     res.status(401).json({
