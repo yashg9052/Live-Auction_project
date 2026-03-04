@@ -4,6 +4,6 @@ import { getAllAuctions, getSingleAuctionDetail } from "../controllers/Auction.j
 
 const router = Router();
 router.get("/all", getAllAuctions);
-router.get("/:id", getSingleAuctionDetail);
+router.get("/auction/:id", getSingleAuctionDetail);
 
 export default router;

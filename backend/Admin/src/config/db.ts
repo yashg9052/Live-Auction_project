@@ -12,8 +12,8 @@ export async function initDB() {
           'ACTIVE',
           'ENDED',
           'DELETED',
-          'PAUSED',
-          'DELETED'
+          
+          
         );
       EXCEPTION
         WHEN duplicate_object THEN null;
@@ -41,6 +41,7 @@ export async function initDB() {
         auction_status auction_status_enum DEFAULT 'ACTIVE',
 
         ends_at TIMESTAMP NOT NULL,
+        bids 
 
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
