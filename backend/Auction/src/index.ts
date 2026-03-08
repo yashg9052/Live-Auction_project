@@ -4,6 +4,7 @@ import cors from "cors";
 dotenv.config();
 import auctionroutes from "./Routes/Auction.js";
 import { createClient } from "redis";
+import { initDB } from "./config/db.js";
 export const redisClient = createClient({
   url: process.env.REDIS_URL as string,
 });
@@ -22,6 +23,7 @@ app.use(
 );
 app.use(express.json());
 app.use("/api/v1", auctionroutes);
+await initDB();
 app.listen(PORT, () => {
   console.log(`Listening to port ${PORT}`);
 });

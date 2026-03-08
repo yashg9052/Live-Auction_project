@@ -4,6 +4,7 @@ dotenv.config();
 import { createClient } from "redis";
 import bidRoutes from "./Routes/Bid.js";
 import { connectRabbitMq } from "./config/rabbitMq.js";
+import cors from "cors"
 // import { processBids } from "./config/Worker.js";
 // import { initDB } from "./config/db.js";
 const app = express();
@@ -21,6 +22,11 @@ redisClient
 await connectRabbitMq();
 // await initDB().then(()=>console.log("Database initialized"))
 // processBids();
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+  }),
+);
 app.use("/api/v1", bidRoutes);
 app.listen(PORT, () => {
   console.log(`Listening to port ${PORT}`);

@@ -8,6 +8,7 @@ export interface IUser extends Document {
   role: string;
   createdAt: Date;
   updatedAt: Date;
+  banned:boolean;
 }
 const UserSchema: Schema<IUser> = new Schema(
   {
@@ -31,7 +32,10 @@ const UserSchema: Schema<IUser> = new Schema(
       type: String,
       required: true,
     },
-    
+    banned:{
+      type:Boolean,
+      default:false
+    }
   },
   {
     timestamps: true,

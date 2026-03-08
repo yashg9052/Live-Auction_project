@@ -8,6 +8,7 @@ export interface IUser extends Document {
   email: string;
   username: string;
   role: string;
+  banned: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

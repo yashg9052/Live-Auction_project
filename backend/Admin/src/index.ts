@@ -1,6 +1,7 @@
 import express from "express";
 import dotenv from "dotenv";
 dotenv.config();
+import cors from "cors"
 import adminRouter from "./Routes/admin.js";
 import { initDB } from "./config/db.js";
 import { setupcloudinary } from "./config/cloudinary.js";
@@ -28,8 +29,13 @@ await initDB()
   .catch((error) => {
     console.log("Error initializing database", error);
   });
-
+app.use(
+  cors({
+    origin: "http://localhost:3000",
+  }),
+);
 app.use("/api/v1", adminRouter);
+
 app.listen(PORT, () => {
   console.log(`Listening to port ${PORT}`);
 });

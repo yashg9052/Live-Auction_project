@@ -3,6 +3,22 @@ import getBuffer from "../utils/getBuffer.js";
 import cloudinary from "cloudinary";
 import TryCatch from "../utils/TryCatch.js";
 import type { AuthenticatedRequest } from "../middleware/isAuth.js";
+export interface AuctionItem {
+  id: number;
+  title: string;
+  details: string;
+  starting_price: number;
+  current_highest_bid: number;
+  current_highest_bidder_id: string | null;
+  current_highest_bid_time: Date | null;
+  images: string[] | null;
+  category: string;
+  auction_status: "ACTIVE" | "ENDED" | "DELETED" | "CANCELLED" | "PAUSED";
+  ends_at: Date;
+  bids: Record<string, any>[];
+  created_at: Date;
+  updated_at: Date;
+}
 
 export const createAuctionItem = TryCatch(
   async (req: AuthenticatedRequest, res) => {
@@ -57,76 +73,53 @@ export const createAuctionItem = TryCatch(
 
 export const updateAuctionItem = TryCatch(
   async (req: AuthenticatedRequest, res) => {
-    if (!req.user || req.user?.role !== "admin") {
-      return res.status(401).json({
-        message: "Unauthorized",
+    if (req.user?.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Access denied. Admins only.",
       });
     }
 
-    const {
-      id: auctionId,
-      title,
-      details,
-      startingPrice,
-      endsAt,
-      category,
-      auction_status,
-    } = req.body;
+    const { id } = req.params;
 
-    if (!auctionId) {
-      return res.status(400).json({ message: "Auction ID is required" });
-    }
+    const { title, details, startingPrice, category, endsAt, auction_status } =
+      req.body;
 
-    if (auction_status) {
-      const validStatuses = [
-        "ACTIVE",
-        "ENDED",
-        "CANCELLED",
-        "DRAFT",
-        "PAUSED",
-        "DELETED",
-      ];
-      if (!validStatuses.includes(auction_status.toUpperCase())) {
-        return res.status(400).json({ message: "Invalid status" });
-      }
-    }
+    const existing = await sql`
+  SELECT * FROM auction_items WHERE id = ${id} LIMIT 1
+` as AuctionItem[];
 
-    let newImageUrl = null;
-    if (req.file) {
-      const imageBuffer = getBuffer(req.file);
-      if (imageBuffer && imageBuffer.content) {
-        const cloud = await cloudinary.v2.uploader.upload(imageBuffer.content);
-        newImageUrl = cloud.secure_url;
-      }
-    }
+if (!existing.length || !existing[0]) {
+  return res.status(404).json({
+    success: false,
+    message: "Auction not found.",
+  });
+}
 
-    const result = await sql`
-      UPDATE auction_items
-      SET 
-        title = COALESCE(${title || null}, title),
-        details = COALESCE(${details || null}, details),
-        starting_price = COALESCE(${startingPrice || null}, starting_price),
-        ends_at = COALESCE(${endsAt || null}, ends_at),
-        category = COALESCE(${category || null}, category),
-        auction_status = COALESCE(${auction_status?.toUpperCase() || null}, auction_status),
-        images = CASE 
-          WHEN ${newImageUrl} IS NOT NULL THEN array_append(COALESCE(images, ARRAY[]::text[]), ${newImageUrl})
-          ELSE images
-        END,
-        updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${auctionId}
-      RETURNING *;
-    `;
+const auction: AuctionItem = existing[0]; // ✅ now safely typed, no undefined error
 
-    if (result.length === 0) {
-      return res.status(404).json({ message: "Auction not found" });
-    }
+// use auction.title, auction.images etc. below
+const updated = await sql`
+  UPDATE auction_items
+  SET
+    title           = ${title?.trim() ?? auction.title},
+    details         = ${details?.trim() ?? auction.details},
+    starting_price  = ${startingPrice ? parseFloat(startingPrice) : auction.starting_price},
+    category        = ${category ?? auction.category},
+    ends_at         = ${endsAt ? new Date(endsAt) : auction.ends_at},
+    auction_status  = ${auction_status ?? auction.auction_status},
+    images          = ${auction.images},
+    updated_at      = NOW()
+  WHERE id = ${id}
+  RETURNING *
+` as AuctionItem[];
 
     return res.status(200).json({
-      message: "Auction updated successfully",
-      auction: result[0],
+      success: true,
+      message: "Auction updated successfully.",
+      auction: updated[0],
     });
-  },
+  }
 );
 
 export const deleteAuctionItem = TryCatch(
@@ -137,7 +130,7 @@ export const deleteAuctionItem = TryCatch(
       });
     }
 
-    const { id: auctionId } = req.body;
+    const { id: auctionId } = req.params;
 
     if (!auctionId) {
       return res.status(400).json({ message: "Auction ID is required" });
@@ -160,136 +153,3 @@ export const deleteAuctionItem = TryCatch(
     });
   },
 );
-
-// export const approveBid = TryCatch(async (req: AuthenticatedRequest, res) => {
-//   if (!req.user || req.user?.role !== "admin") {
-//     return res.status(401).json({
-//       message: "Unauthorized - Admin access required",
-//     });
-//   }
-
-//   try {
-//     // Consume all messages from bid_queue
-//     const allBids = await consumeFromQueue("bid_queue", async (bid) => {
-//       // Write each bid to database
-//       const { userId, email, username, auctionId, amount, bidTime, timestamp } =
-//         bid;
-
-//       if (!auctionId || !amount || !userId) {
-//         console.log("Invalid bid data:", bid);
-//         return;
-//       }
-
-//       // Insert bid into database with created_at from queue timestamp
-//       await sql`
-//         INSERT INTO bids (amount, created_at, auction_id, user_id)
-//         VALUES (${amount}, ${bidTime || timestamp}, ${auctionId}, ${userId})
-//       `;
-//     });
-
-//     if (allBids.length === 0) {
-//       return res.status(200).json({
-//         message: "No bids found in queue",
-//         processedBids: 0,
-//       });
-//     }
-
-//     // Group bids by auctionId and find highest bid for each auction
-//     const bidsByAuction: {
-//       [key: string]: Array<{
-//         userId: string;
-//         amount: number;
-//         bidTime: Date;
-//       }>;
-//     } = {};
-
-//     allBids.forEach((bid: any) => {
-//       if (!bidsByAuction[bid.auctionId]) {
-//         bidsByAuction[bid.auctionId] = [];
-//       }
-//       const auctionBidList = bidsByAuction[bid.auctionId];
-//       if (auctionBidList) {
-//         auctionBidList.push({
-//           userId: bid.userId,
-//           amount: bid.amount,
-//           bidTime: new Date(bid.bidTime || bid.timestamp),
-//         });
-//       }
-//     });
-
-//     const results: any[] = [];
-
-//     // Process each auction's bids
-//     for (const auctionId in bidsByAuction) {
-//       const auctionBids = bidsByAuction[auctionId];
-      
-//       if (!auctionBids || auctionBids.length === 0) {
-//         continue;
-//       }
-
-//       // Find the highest bid
-//       // If multiple bids have same amount, choose the one with earliest time
-//       const highestBid = auctionBids.reduce((highest, current) => {
-//         if (current.amount > highest.amount) {
-//           return current;
-//         } else if (current.amount === highest.amount) {
-//           // Same amount, choose earlier time
-//           return current.bidTime < highest.bidTime ? current : highest;
-//         }
-//         return highest;
-//       });
-
-//       // Update the approved bid with current timestamp
-//       const approvedBidResult = await sql`
-//         UPDATE bids
-//         SET approved_at = CURRENT_TIMESTAMP
-//         WHERE 
-//           auction_id = ${auctionId} 
-//           AND amount = ${highestBid.amount}
-//           AND user_id = ${highestBid.userId}
-//           AND created_at = ${highestBid.bidTime}
-//         RETURNING *;
-//       `;
-
-//       // Update auction's current highest bid
-//       await sql`
-//         UPDATE auction_items
-//         SET current_highest_bid = ${highestBid.amount}
-//         WHERE id = ${auctionId};
-//       `;
-
-//       // Store in Redis
-//       const redisKey = `auction:${auctionId}:highest_bid`;
-//       await redisClient.hSet(redisKey, {
-//         amount: highestBid.amount.toString(),
-//         userId: highestBid.userId,
-//         winningTime: highestBid.bidTime.toISOString(),
-//         approvedAt: new Date().toISOString(),
-//       });
-
-//       results.push({
-//         auctionId,
-//         totalBidsForAuction: auctionBids.length,
-//         approvedBid: {
-//           userId: highestBid.userId,
-//           amount: highestBid.amount,
-//           createdAt: highestBid.bidTime,
-//           approvedAt: new Date(),
-//         },
-//       });
-//     }
-
-//     return res.status(200).json({
-//       message: "Bids processed and approved successfully",
-//       processedBids: allBids.length,
-//       auctionsProcessed: results.length,
-//       results,
-//     });
-//   } catch (error) {
-//     console.log("Error in approveBid:", error);
-//     return res.status(500).json({
-//       message: "Error processing bids",
-//       error: error instanceof Error ? error.message : "Unknown error",
-//     });
-//   }
-// });

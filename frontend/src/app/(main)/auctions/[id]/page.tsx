@@ -1,9 +1,10 @@
 "use client";
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
-import axios from "axios";
 import { useAuctionData } from "@/src/context/AuctionContext";
-import { useParams } from "next/navigation";
+import Cookies from "js-cookie";
+import { Clock, ArrowLeft } from "lucide-react";
+import { useRouter } from "next/navigation";
 
 interface Bid {
   id: string;
@@ -31,7 +32,6 @@ interface AuctionDetail {
   bids: Bid[];
 }
 
-// ── Countdown hook ──────────────────────────────────────────────
 function useCountdown(endsAt: string) {
   const calc = () => {
     const diff = new Date(endsAt).getTime() - Date.now();
@@ -50,30 +50,31 @@ function useCountdown(endsAt: string) {
   return time;
 }
 
-// ── Fetch function ──────────────────────────────────────────────
 async function fetchAuctionDetail(id: string | number): Promise<AuctionDetail> {
-    const auction_detail_server="http://localhost:5003/api/v1"
-  const { data } = await axios.get<{message:string,auction:AuctionDetail}>(
-    `${auction_detail_server}/auction/${id}`
-  );
+  const res = await fetch(`http://localhost:5003/api/v1/auction/${id}`);
+  const data: { message: string; auction: AuctionDetail } = await res.json();
+  if (!res.ok) throw new Error(data.message);
   return data.auction;
 }
 
-// ── Page component ──────────────────────────────────────────────
-export default function AuctionDetailPage({ params }: { params: Promise<{ id: string }> }) {
-    const {isLoggedIn }=useAuctionData();
-      const { id } = React.use(params)
+export default function AuctionDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { isLoggedIn, user } = useAuctionData();
+  const { id } = React.use(params);
+  const router = useRouter();
+
   const [auction, setAuction] = useState<AuctionDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
   const [activeImg, setActiveImg] = useState(0);
   const [bidValue, setBidValue] = useState(0);
   const [cooldown, setCooldown] = useState(false);
   const [bidMsg, setBidMsg] = useState<{ type: "success" | "error"; text: string } | null>(null);
-  const cooldownRef = useRef<ReturnType<typeof setTimeout>|null>(null);
+  const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Fetch on mount ────────────────────────────────────────────
   useEffect(() => {
     const load = async () => {
       try {
@@ -82,7 +83,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
         const data = await fetchAuctionDetail(id);
         setAuction(data);
         setBidValue(data.current_highest_bid + 500);
-      } catch (err) {
+      } catch {
         setError("Something went wrong. Please try again.");
       } finally {
         setLoading(false);
@@ -94,11 +95,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
   const { days, hours, minutes, seconds, ended } = useCountdown(auction?.ends_at ?? "");
 
   const formatINR = (n: number) =>
-    new Intl.NumberFormat("en-IN", {
-      style: "currency",
-      currency: "INR",
-      maximumFractionDigits: 0,
-    }).format(n);
+    new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n);
 
   const shortId = (uid: string) => "User " + uid.slice(-6).toUpperCase();
 
@@ -110,22 +107,51 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
     return `${Math.floor(m / 60)}h ago`;
   };
 
-  const handlePlaceBid = useCallback(() => {
-    if (!auction || cooldown) return;
+  const handlePlaceBid = useCallback(async () => {
+    if (!auction || cooldown || user?.role === "admin") return;
+
+    if (user?.banned) {
+      setBidMsg({ type: "error", text: "You have been banned from bidding." });
+      return;
+    }
+
     const minBid = auction.current_highest_bid + 1;
     if (bidValue < minBid) {
       setBidMsg({ type: "error", text: `Bid must be at least ${formatINR(minBid)}` });
       return;
     }
-    setCooldown(true);
-    setBidMsg({ type: "success", text: "Bid placed successfully!" });
-    cooldownRef.current = setTimeout(() => {
-      setCooldown(false);
-      setBidMsg(null);
-    }, 2000);
-  }, [auction, bidValue, cooldown]);
 
-  // ── Loading state ─────────────────────────────────────────────
+    try {
+      const res = await fetch("http://localhost:5004/api/v1/bid/make", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          token: Cookies.get("token") ?? "",
+        },
+        body: JSON.stringify({ auctionId: id, amount: bidValue }),
+      });
+
+      const data: { message: string } = await res.json();
+
+      if (!res.ok) {
+        setBidMsg({ type: "error", text: data.message ?? "Failed to place bid. Try again." });
+        return;
+      }
+
+      setCooldown(true);
+      setBidMsg({ type: "success", text: "Bid placed successfully!" });
+      setAuction((prev) => prev ? { ...prev, current_highest_bid: bidValue } : prev);
+      setBidValue(bidValue + 500);
+
+      cooldownRef.current = setTimeout(() => {
+        setCooldown(false);
+        setBidMsg(null);
+      }, 2000);
+    } catch {
+      setBidMsg({ type: "error", text: "Failed to place bid. Try again." });
+    }
+  }, [auction, bidValue, cooldown, id]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -137,7 +163,6 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
     );
   }
 
-  // ── Error state ───────────────────────────────────────────────
   if (error || !auction) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
@@ -167,8 +192,8 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
   const countdownLabel = ended
     ? "Auction Ended"
     : days > 0
-      ? `${days}d ${hours}h ${minutes}m ${seconds}s`
-      : `${hours > 0 ? hours + "h " : ""}${minutes}m ${seconds}s`;
+    ? `${days}d ${hours}h ${minutes}m ${seconds}s`
+    : `${hours > 0 ? hours + "h " : ""}${minutes}m ${seconds}s`;
 
   const sortedBids = [...auction.bids]
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -176,16 +201,21 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-10 py-6 sm:py-8">
 
-        
+        <button
+          onClick={() => router.back()}
+          className="flex items-center gap-1.5 text-gray-500 hover:text-gray-800 transition-colors mb-4 sm:mb-6 cursor-pointer bg-transparent border-none p-0"
+        >
+          <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5" />
+          <span className="text-sm sm:text-base font-medium">Back</span>
+        </button>
 
-        {/* Page title (mobile) */}
-        <h1 className="text-2xl font-bold text-gray-900 mb-5 lg:hidden">{auction.title}</h1>
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-900 mb-4 sm:mb-5 lg:hidden">
+          {auction.title}
+        </h1>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-8">
-
-          {/* ── LEFT: Image gallery ─────────────────────────────── */}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-6 sm:gap-8">
           <div className="flex flex-col gap-4">
             <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-white border border-gray-100 shadow-sm">
               <Image
@@ -195,12 +225,14 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                 className="object-cover"
                 priority
               />
-              <span className={`absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-semibold shadow ${
-                ended ? "bg-gray-200 text-gray-600" :
-                isEndingSoon ? "bg-orange-100 text-orange-600" :
-                "bg-green-100 text-green-700"
-              }`}>
-                {ended ? "Ended" : isEndingSoon ? "⏰ Ending Soon" : "● Live"}
+              <span className={`absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-semibold shadow flex items-center gap-1.5 ${ended ? "bg-gray-200 text-gray-600" : isEndingSoon ? "bg-orange-100 text-orange-600" : "bg-green-100 text-green-700"}`}>
+                {ended ? (
+                  <span>Ended</span>
+                ) : isEndingSoon ? (
+                  <><Clock className="w-3 h-3" /><span>Ending Soon</span></>
+                ) : (
+                  <><div className="w-1.5 h-1.5 rounded-full bg-current" /><span>Live</span></>
+                )}
               </span>
             </div>
 
@@ -210,9 +242,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                   <button
                     key={i}
                     onClick={() => setActiveImg(i)}
-                    className={`relative flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 transition-all duration-150 ${
-                      activeImg === i ? "border-blue-500 shadow-md" : "border-transparent hover:border-gray-300"
-                    }`}
+                    className={`relative flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 transition-all duration-150 ${activeImg === i ? "border-blue-500 shadow-md" : "border-transparent hover:border-gray-300"}`}
                   >
                     <Image src={img} alt={`thumb-${i}`} fill className="object-cover" />
                   </button>
@@ -220,7 +250,6 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
               </div>
             )}
 
-            {/* Item details (desktop) */}
             <div className="hidden lg:block bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
               <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-3">Item Details</h3>
               <p className="text-gray-700 text-sm leading-relaxed">{auction.details}</p>
@@ -237,15 +266,11 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
             </div>
           </div>
 
-          {/* ── RIGHT: Bid panel ────────────────────────────────── */}
           <div className="flex flex-col gap-5">
-
-            {/* Title (desktop) */}
             <div className="hidden lg:block">
               <h1 className="text-2xl font-bold text-gray-900">{auction.title}</h1>
             </div>
 
-            {/* Highest bid card */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -264,7 +289,6 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
 
-            {/* Bidding console */}
             {!ended && (
               <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
                 <p className="text-sm font-bold text-gray-800 mb-4">Bidding Console</p>
@@ -278,41 +302,37 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                     className="w-full h-12 pl-8 pr-4 border border-gray-200 rounded-xl text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition"
                   />
                 </div>
+                <p className="text-xs text-gray-400 mb-3">
+                  Minimum bid: <span className="font-semibold text-gray-600">{formatINR(minBid)}</span>
+                </p>
                 {bidMsg && (
                   <p className={`text-xs mb-3 font-medium ${bidMsg.type === "success" ? "text-green-600" : "text-red-500"}`}>
                     {bidMsg.text}
                   </p>
                 )}
                 <button
-                  onClick={!isLoggedIn?()=>{}:handlePlaceBid}
-                  disabled={cooldown}
-                  className={`w-full h-12 cursor-pointer rounded-xl text-sm font-semibold transition-all duration-150 ${
-                    cooldown
-                      ? "bg-blue-300 text-white cursor-not-allowed"
-                      : "bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white shadow-md shadow-blue-200"
-                  }`}
+                  onClick={isLoggedIn ? handlePlaceBid : undefined}
+                  disabled={cooldown || !isLoggedIn}
+                  className={`w-full h-12 cursor-pointer rounded-xl text-sm font-semibold transition-all duration-150 ${!isLoggedIn ? "bg-gray-100 text-gray-400 cursor-not-allowed" : cooldown ? "bg-blue-300 text-white cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white shadow-md shadow-blue-200"}`}
                 >
-                  {!isLoggedIn?"Please Login to place a Bid":
-                  cooldown ? "Processing…" : "Place Bid"}
+                  {!isLoggedIn ? "Please Login to place a Bid" : cooldown ? "Processing…" : "Place Bid"}
                 </button>
-                <p className="text-center text-xs text-gray-400 mt-2">1-2s cooldown prevents double clicks.</p>
               </div>
             )}
 
-            {/* Live bid history */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-1">
                 <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
                 <p className="text-sm font-bold text-gray-800">Live Bid History Feed</p>
               </div>
-              <p className="text-xs text-gray-400 mb-4">Last 15 bids are visually updated via WebSockets.</p>
               <div className="flex flex-col divide-y divide-gray-50">
+                {sortedBids.length === 0 && (
+                  <p className="text-xs text-gray-400 text-center py-4">No bids yet. Be the first!</p>
+                )}
                 {sortedBids.map((bid, i) => (
                   <div key={bid.id} className={`flex items-center justify-between py-3 ${i === 0 ? "bg-green-50 -mx-5 px-5 rounded-xl" : ""}`}>
                     <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
-                        i === 0 ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
-                      }`}>
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${i === 0 ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}>
                         {shortId(bid.user_id).slice(-2)}
                       </div>
                       <div>
@@ -321,9 +341,7 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className={`text-sm font-bold ${i === 0 ? "text-green-600" : "text-gray-700"}`}>
-                        {formatINR(bid.amount)}
-                      </p>
+                      <p className={`text-sm font-bold ${i === 0 ? "text-green-600" : "text-gray-700"}`}>{formatINR(bid.amount)}</p>
                       {i === 0 && <p className="text-xs text-green-500 font-medium">Highest</p>}
                     </div>
                   </div>
@@ -331,7 +349,6 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
               </div>
             </div>
 
-            {/* Item details (mobile) */}
             <div className="lg:hidden bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-3">Item Details</h3>
               <p className="text-gray-700 text-sm leading-relaxed">{auction.details}</p>
@@ -346,7 +363,6 @@ export default function AuctionDetailPage({ params }: { params: Promise<{ id: st
                 </div>
               </div>
             </div>
-
           </div>
         </div>
       </div>

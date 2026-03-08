@@ -1,5 +1,6 @@
-// components/Footer.tsx
+"use client"
 
+import { useAuctionData } from "@/src/context/AuctionContext";
 import Link from "next/link";
 
 // const footerLinks = {
@@ -21,8 +22,9 @@ import Link from "next/link";
 // };
 
 export default function Footer() {
+  const {loading}=useAuctionData();
   return (
-    <footer className="w-full border-t border-gray-200 ">
+    <footer className="w-full border-t border-gray-200 bg-[#155dfc30]">
       <div className=" flex flex-col gap-10 min-[700px]:flex-row mx-auto max-w-7xl px-6 py-10  justify-evenly">
         <div className="flex flex-col gap-3 max-w-xs">
           <span className="text-xl font-bold text-gray-900">BidBase</span>

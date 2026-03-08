@@ -2,12 +2,27 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import axios from "axios";
+
 import Image from "next/image";
 import { useAuctionData } from "@/src/context/AuctionContext";
 import Cookies from "js-cookie";
+import { ArrowLeft } from "lucide-react";
 
-// import { useAuth } from "@/src/context/AuthContext";
+export interface IUser {
+  _id: string;
+  email: string;
+  username: string;
+  role: "admin" | "user";
+  banned: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IRegisterResponse {
+  message: "User created successfully";
+  user: IUser;
+  token: string;
+}
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -32,48 +47,67 @@ export default function RegisterPage() {
       return;
     }
     try {
-      setLoading(true);
-      setError(null);
-      const register_server="http://localhost:5000"
-      const response:any = await axios.post(`${register_server}/api/v1/user/register`, {
-        name: username,
-        email,
-        password,
-      });
-      // Store token in cookie
-      const token = response.data.token;
-      if (token) {
-        Cookies.set("token", token, { expires: 7 });
-      }
-      setIsLoggedIn(true)
-      router.replace("/home");
-      
-    } catch (err) {
-      setError("Something went wrong. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+  setLoading(true);
+  setError(null);
+
+  const REGISTER_SERVER = "http://localhost:5000";
+
+  const response = await fetch(`${REGISTER_SERVER}/api/v1/user/register`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: username,
+      email,
+      password,
+    }),
+  });
+
+  const data: IRegisterResponse = await response.json();
+
+  if (!response.ok) {
+    setError(data.message || "Something went wrong. Please try again.");
+    return;
+  }
+
+  const token = data.token;
+
+  if (token) {
+    Cookies.set("token", token, { expires: 7 });
+  }
+
+  setIsLoggedIn(true);
+  router.replace("/home");
+} catch {
+  setError("Something went wrong. Please try again.");
+} finally {
+  setLoading(false);
+}
   };
 
-  const handleGoogleLogin = () => {
-    window.location.href = `${process.env.NEXT_PUBLIC_API_URL}/auth/google`;
-  };
-
+ 
   return (
     <div className="w-full bg-white rounded-2xl shadow-md px-6 sm:px-8 py-8 sm:py-10">
 
       {/* Logo */}
-      <div className="flex justify-center mb-6">
-              <div className="relative h-12 w-36">
-                <Image
-                  src="/logo.svg"
-                  alt="BidBase Logo"
-                  fill
-                  className="object-contain scale-300"
-                  priority
-                />
-              </div>
-            </div>
+      <div className="flex items-center justify-center mb-6 relative">
+        <button
+          onClick={() => router.back()}
+          className="absolute  left-0 p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+        >
+          <ArrowLeft className="w-5 h-5 cursor-pointer" />
+        </button>
+        <div className="relative h-12 w-36 ">
+          <Image
+            src="/logo.svg"
+            alt="BidBase Logo"
+            fill
+            className="object-contain scale-190 "
+            priority
+          />
+        </div>
+      </div>
 
       {/* Header */}
       <div className="text-center mb-6">
@@ -82,21 +116,7 @@ export default function RegisterPage() {
       </div>
 
       
-      <button
-        onClick={handleGoogleLogin}
-        className="w-full flex items-center justify-center gap-3 border border-gray-200 rounded-lg h-11 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors mb-4"
-      >
-        <div className="relative h-5 w-5 flex-shrink-0">
-                  <Image
-                    src="/google-logo.svg"
-                    alt="Google"
-                    fill
-                    className="object-contain"
-                    priority
-                  />
-                </div>
-        Continue with Google
-      </button>
+      
 
       {/* Divider */}
       <div className="flex items-center gap-3 mb-4">

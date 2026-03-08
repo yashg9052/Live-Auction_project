@@ -3,6 +3,7 @@ import { sql } from "../config/db.js";
 import { json, type Request, type Response } from "express";
 import { getKeyName } from "../utils/key.js";
 import { redisClient } from "../index.js";
+import type { AuthenticatedRequest } from "../Middleware/isAuth.js";
 
 export interface IAuction {
   id: number;
@@ -11,6 +12,8 @@ export interface IAuction {
   images: string[];
   ending_at: string;
   auction_status: "ACTIVE" | "ENDED" | "CANCELLED";
+  category:string;
+  ends_at:string
 }
 export interface Ibid {
   id: string;
@@ -32,7 +35,7 @@ export interface IAuctiondetail {
   ends_at: string;
   created_at: string;
   updated_at: string;
-  bids: Ibid[] |null;
+  bids: Ibid[] | null;
 }
 export const getAllAuctions = TryCatch(async (req: Request, res: Response) => {
   const auctionKey = getKeyName("auction", "list");
@@ -55,7 +58,7 @@ export const getAllAuctions = TryCatch(async (req: Request, res: Response) => {
   }
 
   const auctions = (await sql`
-      SELECT id, title, current_highest_bid, images,auction_status, ends_at
+      SELECT id, title, current_highest_bid, images,auction_status, ends_at,category,ends_at
       FROM auction_items
       ORDER BY created_at DESC;
     `) as IAuction[];
@@ -102,36 +105,35 @@ export const getSingleAuctionDetail = TryCatch(
       }
     }
 
-const [auctionRow] = (await sql`
+    const [auctionRow] = (await sql`
   SELECT *
   FROM auction_items
   WHERE id = ${id};
-`)as IAuctiondetail[];
+`) as IAuctiondetail[];
 
-if (!auctionRow) {
-  return res.status(404).json({
-    message: "Auction not found",
-  });
-}
-const bids = await (sql`
+    if (!auctionRow) {
+      return res.status(404).json({
+        message: "Auction not found",
+      });
+    }
+    const bids = (await sql`
   SELECT * FROM bids WHERE auction_id = ${id}
-`)as Ibid[];
+`) as Ibid[];
 
-const auctionData: IAuctiondetail = {
-  id: auctionRow.id!,
-  title: auctionRow.title!,
-  details: auctionRow.details!,
-  starting_price: auctionRow.starting_price!,
-  current_highest_bid: auctionRow.current_highest_bid!,
-  images: auctionRow.images ?? null,
-  category: auctionRow.category!,
-  auction_status: auctionRow.auction_status!,
-  ends_at: auctionRow.ends_at!,
-  created_at: auctionRow.created_at!,
-  updated_at: auctionRow.updated_at!,
-  bids,
-};
-    
+    const auctionData: IAuctiondetail = {
+      id: auctionRow.id!,
+      title: auctionRow.title!,
+      details: auctionRow.details!,
+      starting_price: auctionRow.starting_price!,
+      current_highest_bid: auctionRow.current_highest_bid!,
+      images: auctionRow.images ?? null,
+      category: auctionRow.category!,
+      auction_status: auctionRow.auction_status!,
+      ends_at: auctionRow.ends_at!,
+      created_at: auctionRow.created_at!,
+      updated_at: auctionRow.updated_at!,
+      bids,
+    };
 
     if (redisClient.isReady) {
       await redisClient.set(auctionDetailKey, JSON.stringify(auctionData), {
@@ -145,3 +147,90 @@ const auctionData: IAuctiondetail = {
     });
   },
 );
+
+export const getActiveBids = TryCatch(
+  async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+    const userId = req.user._id.toString();
+
+    const activeBids = await sql`
+      SELECT 
+        b.id,
+        b.amount as yourBid,
+        b.created_at,
+        ai.id as auctionId,
+        ai.title,
+        ai.images,
+        ai.current_highest_bid,
+        ai.current_highest_bidder_id,
+        ai.ends_at,
+        ai.auction_status,
+        CASE 
+          WHEN ai.current_highest_bidder_id = ${userId} AND ai.auction_status = 'ACTIVE' THEN 'winning'
+          WHEN b.user_id = ${userId} AND ai.current_highest_bidder_id != ${userId} AND ai.auction_status = 'ACTIVE' THEN 'outbid'
+          ELSE 'outbid'
+        END as status
+      FROM bids b
+      JOIN auction_items ai ON b.auction_id = ai.id
+      WHERE b.user_id = ${userId} AND ai.auction_status = 'ACTIVE'
+      ORDER BY b.created_at DESC
+    `;
+
+    const formattedBids = activeBids.map((bid: any) => ({
+      id: bid.id,
+      title: bid.title,
+      imageUrl:
+        bid.images && bid.images.length > 0
+          ? bid.images[0]
+          : "/placeholder.png",
+      yourBid: Number(bid.yourbid),
+      status: bid.status,
+    }));
+
+    return res.status(200).json({
+      message: "Active bids retrieved successfully",
+      data: formattedBids,
+    });
+  },
+);
+
+export const getWonItems = TryCatch(
+  async (req: AuthenticatedRequest, res: Response) => {
+    if (!req.user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    const userId = req.user._id.toString();
+
+    const wonItems = await sql`
+      SELECT 
+        ai.id,
+        ai.title,
+        ai.images,
+        ai.current_highest_bid as yourBid,
+        ai.ends_at
+      FROM auction_items ai
+      WHERE ai.current_highest_bidder_id = ${userId} AND ai.auction_status = 'ENDED'
+      ORDER BY ai.ends_at DESC
+    `;
+
+    const formattedItems = wonItems.map((item: any) => ({
+      id: item.id,
+      title: item.title,
+      imageUrl:
+        item.images && item.images.length > 0
+          ? item.images[0]
+          : "/placeholder.png",
+      yourBid: Number(item.yourbid),
+      status: "won" as const,
+    }));
+
+    return res.status(200).json({
+      message: "Won items retrieved successfully",
+      data: formattedItems,
+    });
+  },
+);
+

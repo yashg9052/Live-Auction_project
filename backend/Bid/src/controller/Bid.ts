@@ -37,7 +37,7 @@ export const makeBid = TryCatch(async (req: AuthenticatedRequest, res) => {
       
     };
 
-    await publishToQueue("bid_queue", bidMessage);
+    await publishToQueue("bid_queue", bidMessage)
 
     return res.status(200).json({
       message: "Bid accepted and sent for processing",

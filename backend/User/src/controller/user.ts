@@ -1,12 +1,20 @@
 import TryCatch from "../config/TryCatch.js";
-import type { Request, Response } from "express";
+import type { CookieOptions, Request, Response } from "express";
 import bcrypt from "bcrypt";
 import { User, type IUser } from "../Model/UserModel.js";
+import { Session } from "../Model/SessionModel.js";
 import { generateToken } from "../config/GenerateToken.js";
 import { publishToQueue } from "../config/rabbitMq.js";
 import type { AuthenticatedRequest } from "../Middleware/isAuth.js";
 import { redisClient } from "../index.js";
+import { createSession, deleteSession, deleteSessionByUserId } from "../utils/sessionUtils.js";
 
+interface GoogleClaims {
+  sub: string;
+  name?: string;
+  email?: string;
+  picture?: string;
+}
 export const register = TryCatch(async (req: Request, res: Response) => {
   const { name, email, password } = req.body;
 
@@ -16,8 +24,8 @@ export const register = TryCatch(async (req: Request, res: Response) => {
       .json({ message: "Email, password and username are required" });
   }
 
-  const existingUser :IUser|null= await User.findOne({ email });
-  
+  const existingUser: IUser | null = await User.findOne({ email });
+
   if (existingUser) {
     return res.status(400).json({ message: "User already exists" });
   }
@@ -31,6 +39,7 @@ export const register = TryCatch(async (req: Request, res: Response) => {
   });
 
   const token = generateToken(user._id);
+  await createSession(user._id.toString());
 
   return res.status(201).json({
     message: "User created successfully",
@@ -39,6 +48,7 @@ export const register = TryCatch(async (req: Request, res: Response) => {
       email: user.email,
       username: user.username,
       role: user.role,
+      banned: user.banned,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     },
@@ -53,7 +63,7 @@ export const login = TryCatch(async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Email and password are required" });
   }
 
-  const user :IUser|null= await User.findOne({ email });
+  const user: IUser | null = await User.findOne({ email });
 
   if (!user) {
     return res.status(404).json({ message: "Invalid credentials" });
@@ -65,6 +75,7 @@ export const login = TryCatch(async (req: Request, res: Response) => {
     return res.status(401).json({ message: "Invalid credentials" });
   }
 
+  await createSession(user._id.toString());
   const token = generateToken(user._id.toString());
 
   return res.status(200).json({
@@ -74,6 +85,7 @@ export const login = TryCatch(async (req: Request, res: Response) => {
       email: user.email,
       username: user.username,
       role: user.role,
+      banned: user.banned,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     },
@@ -83,7 +95,7 @@ export const login = TryCatch(async (req: Request, res: Response) => {
 
 export const getProfile = TryCatch(
   async (req: AuthenticatedRequest, res: Response) => {
-    const user= req.user;
+    const user = req.user;
 
     if (!user) {
       return res.status(404).json({ message: "User not found" });
@@ -96,11 +108,12 @@ export const getProfile = TryCatch(
         email: user.email,
         username: user.username,
         role: user.role,
+        banned: user.banned,
         createdAt: user.createdAt,
         updatedAt: user.updatedAt,
       },
     });
-  }
+  },
 );
 
 export const ForgotPassword = TryCatch(async (req: Request, res: Response) => {
@@ -110,12 +123,12 @@ export const ForgotPassword = TryCatch(async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Email is required" });
   }
 
-  const user :IUser |null= await User.findOne({ email });
+  const user: IUser | null = await User.findOne({ email });
 
   if (!user) {
-    return res
-      .status(200)
-      .json({ message: `There is no account registered with the email : ${email}` });
+    return res.status(200).json({
+      message: `There is no account registered with the email : ${email}`,
+    });
   }
 
   const rateLimitKey = `otp:ratelimit:${email}`;
@@ -162,12 +175,13 @@ export const verifyUser = TryCatch(async (req: Request, res: Response) => {
 
   await redisClient.del(otpKey);
 
-  const user:IUser|null = await User.findOne({ email });
+  const user: IUser | null = await User.findOne({ email });
 
   if (!user) {
     return res.status(404).json({ message: "User not found" });
   }
 
+  await createSession(user._id.toString());
   const token = generateToken(user._id.toString());
 
   return res.status(200).json({
@@ -177,9 +191,101 @@ export const verifyUser = TryCatch(async (req: Request, res: Response) => {
       email: user.email,
       username: user.username,
       role: user.role,
+      banned: user.banned,
       createdAt: user.createdAt,
       updatedAt: user.updatedAt,
     },
     token,
   });
 });
+export const getAllUser = TryCatch(async (req: AuthenticatedRequest, res) => {
+  if (!req.user || req.user?.role !== "admin") {
+    return res.status(401).json({
+      message: "Unauthorized. Only admins can unban users",
+    });
+  }
+  const Users_key = "Users:list";
+  if (redisClient.isReady) {
+    const cached = await redisClient.hGetAll(Users_key);
+    if (Object.keys(cached).length > 0) {
+      console.log("cache hit");
+      const users: IUser[] = Object.values(cached).map((u) => JSON.parse(u));
+      return res.status(200).json({
+        message: "Auctions fetched from cache",
+        users,
+      });
+    }
+  }
+  const users: IUser[] = await User.find({ role: { $ne: "admin" } }).select(
+    "-password",
+  );
+  if (redisClient.isReady && users.length > 0) {
+    const hashData: Record<string, string> = {};
+
+    users.forEach((user) => {
+      hashData[user._id.toString()] = JSON.stringify(user);
+    });
+
+    await redisClient.hSet(Users_key, hashData);
+    await redisClient.expire(Users_key, 60);
+  }
+  res.status(200).json({
+    message: "All users fetched successfully",
+    Users: users,
+  });
+});
+
+export const changeBanStatus = TryCatch(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const adminUser = req.user;
+
+    if (!adminUser || adminUser.role !== "admin") {
+      return res.status(401).json({
+        message: "Unauthorized. Only admins can change user ban status",
+      });
+    }
+
+    const { userId } = req.body;
+
+    if (!userId) {
+      return res.status(400).json({
+        message: "User ID is required",
+      });
+    }
+
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    user.banned = !user.banned;
+    await user.save();
+
+    return res.status(200).json({
+      message: `User ${user.banned ? "banned" : "unbanned"} successfully`,
+      user: {
+        _id: user._id,
+        banned: user.banned,
+        updatedAt: user.updatedAt,
+      },
+    });
+  },
+);
+
+export const logout = TryCatch(
+  async (req: AuthenticatedRequest, res: Response) => {
+    const user = req.user;
+
+    if (!user) {
+      return res.status(401).json({ message: "Unauthorized" });
+    }
+
+    await deleteSessionByUserId(user._id.toString());
+
+    return res.status(200).json({
+      message: "Logged out successfully",
+    });
+  },
+);
+

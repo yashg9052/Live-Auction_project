@@ -7,6 +7,7 @@ export interface MUser extends Document {
   email: string;
   username: string;
   role: string;
+  banned: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,7 +33,6 @@ export const isAuth = async (
       token,
       process.env.JWT_SECRET as string,
     ) as JwtPayload;
-    console.log("Decoded JWT:", decoded.userId);
 
     if (!decoded || !decoded.userId) {
       res.status(401).json({
