@@ -31,6 +31,7 @@ export const makeBid = TryCatch(async (req: AuthenticatedRequest, res) => {
   try {
     const bidMessage = {
       userId: req.user?._id,
+      username:req.user?.username,
       auctionId,
       amount,
       bidTime: new Date(),

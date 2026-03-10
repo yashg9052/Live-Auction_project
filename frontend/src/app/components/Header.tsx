@@ -74,7 +74,7 @@ export default function Header() {
 
               {isMenuOpen && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                  {isLoggedIn && (
+                  {(isLoggedIn&&!loading) && (
                     <>
                       {mobileMenuLinks.map((link) => (
                         <Link
@@ -123,7 +123,7 @@ export default function Header() {
             </div>
           )}
 
-          {!isLoggedIn ? (
+          {!isLoggedIn && !loading? (
             <div className="gap-3 sm:gap-4 hidden min-[750px]:flex">
               <Link
                 href="/login"

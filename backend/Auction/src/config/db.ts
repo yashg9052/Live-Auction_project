@@ -15,6 +15,7 @@ export async function initDB() {
     current_highest_bid DOUBLE PRECISION DEFAULT 0,
     current_highest_bidder_id TEXT,
     current_highest_bid_time TIMESTAMP,
+    current_highest_bidder_username TEXT,
     images TEXT[],
     category TEXT NOT NULL,
     auction_status auction_status_enum DEFAULT 'ACTIVE',

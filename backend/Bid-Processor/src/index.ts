@@ -5,9 +5,9 @@ import { createClient } from "redis";
 import { connectRabbitMq } from "./config/rabbitMq.js";
 import { processBids } from "./Consumer.js";
 import { initDB } from "./config/db.js";
-const app = express();
-app.use(express.json());
+import { app, server } from "./config/socket.js";
 
+app.use(express.json());
 
 const PORT = process.env.PORT;
 export const redisClient = createClient({
@@ -18,8 +18,12 @@ redisClient
   .then(() => console.log("connected to redis"))
   .catch(console.error);
 await connectRabbitMq();
-await initDB()
+await initDB();
 processBids();
+
+server.listen(PORT, () => {
+  console.log(`Listening to port ${PORT}`);
+});
 app.listen(PORT, () => {
   console.log(`Listening to port ${PORT}`);
 });

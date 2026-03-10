@@ -16,6 +16,7 @@ export async function initDB() {
     approved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     auction_id INTEGER NOT NULL,
     user_id TEXT NOT NULL,
+    username TEXT NOT NULL, 
     
     CONSTRAINT fk_auction
         FOREIGN KEY (auction_id)
