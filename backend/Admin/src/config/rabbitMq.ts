@@ -1,6 +1,6 @@
 import ampq from "amqplib";
 
-let channel: ampq.Channel;
+export let channel: ampq.Channel;
 export const connectRabbitMq = async () => {
   try {
     const connection = await ampq.connect({
@@ -19,50 +19,3 @@ export const connectRabbitMq = async () => {
   }
 };
 
-export const publishToQueue = async (queuename: string, message: any) => {
-  if (!channel) {
-    console.log("Rabbitmq channel is not initialized");
-    return;
-  }
-  await channel.assertQueue(queuename, { durable: true });
-  channel.sendToQueue(queuename, Buffer.from(JSON.stringify(message)), {
-    persistent: true,
-  });
-};
-
-export const consumeFromQueue = async (
-  queueName: string,
-  callback: (message: any) => Promise<void>
-) => {
-  if (!channel) {
-    console.log("Rabbitmq channel is not initialized");
-    return [];
-  }
-
-  await channel.assertQueue(queueName, { durable: true });
-
-  const messages: any[] = [];
-
-  try {
-    while (true) {
-      const message = await channel.get(queueName, { noAck: false });
-      if (!message) {
-        break;
-      }
-
-      try {
-        const content = JSON.parse(message.content.toString());
-        messages.push(content);
-        await callback(content);
-        channel.ack(message);
-      } catch (error) {
-        console.log("Error processing message:", error);
-        channel.nack(message, false, true);
-      }
-    }
-  } catch (error) {
-    console.log("Error consuming from queue:", error);
-  }
-
-  return messages;
-};

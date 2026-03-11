@@ -1,6 +1,6 @@
 import ampq from "amqplib";
 
-let channel: ampq.Channel;
+export let channel: ampq.Channel;
 export const connectRabbitMq = async () => {
   try {
     const connection = await ampq.connect({

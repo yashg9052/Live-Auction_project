@@ -1,7 +1,7 @@
 import TryCatch from "../utils/TryCatch.js";
 import { sql } from "../config/db.js";
 import { json, type Request, type Response } from "express";
-import { getKeyName } from "../utils/key.js";
+import { getAuctionListKey, getAuctionDetailKey } from "../utils/key.js";
 import { redisClient } from "../index.js";
 import type { AuthenticatedRequest } from "../Middleware/isAuth.js";
 
@@ -38,7 +38,7 @@ export interface IAuctiondetail {
   bids: Ibid[] | null;
 }
 export const getAllAuctions = TryCatch(async (req: Request, res: Response) => {
-  const auctionKey = getKeyName("auction", "list");
+  const auctionKey = getAuctionListKey();
 
   if (redisClient.isReady) {
     const cached = await redisClient.hGetAll(auctionKey);
@@ -88,15 +88,15 @@ export const getSingleAuctionDetail = TryCatch(
       });
     }
 
-    const auctionDetailKey = getKeyName("auction", id as string);
+    const auctionDetailKey = getAuctionDetailKey();
 
     if (redisClient.isReady) {
-      const cached = await redisClient.get(auctionDetailKey);
+      const cached = await redisClient.hGet(auctionDetailKey, id);
 
       if (cached) {
         console.log("Cache hit");
 
-        const auction: IAuctiondetail[] = JSON.parse(cached);
+        const auction: IAuctiondetail = JSON.parse(cached);
 
         return res.status(200).json({
           message: "Auction fetched from cache",
@@ -136,9 +136,15 @@ export const getSingleAuctionDetail = TryCatch(
     };
 
     if (redisClient.isReady) {
-      await redisClient.set(auctionDetailKey, JSON.stringify(auctionData), {
-        EX: 120,
-      });
+      await redisClient.hSet(
+        auctionDetailKey,
+        id,
+        JSON.stringify(auctionData),
+      );
+      await redisClient.expireAt(
+        auctionDetailKey,
+        Math.floor(Date.now() / 1000) + 120,
+      );
     }
 
     return res.status(200).json({

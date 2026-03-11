@@ -3,6 +3,9 @@ import getBuffer from "../utils/getBuffer.js";
 import cloudinary from "cloudinary";
 import TryCatch from "../utils/TryCatch.js";
 import type { AuthenticatedRequest } from "../middleware/isAuth.js";
+import { channel } from "../config/rabbitMq.js";
+import { redisClient } from "../index.js";
+import { getAuctionListKey } from "../utils/key.js";
 export interface AuctionItem {
   id: number;
   title: string;
@@ -63,7 +66,43 @@ export const createAuctionItem = TryCatch(
       )
       RETURNING *;
     `;
-
+    // put auction in delay queue after that delay is over put in auction end queue
+    if (channel) {
+      try {
+        await channel.assertExchange("auction_exchange", "direct", {
+          durable: true,
+        });
+        await channel.assertQueue("auction_end_queue", { durable: true });
+        await channel.assertQueue("auction_delay_queue", {
+          durable: true,
+          deadLetterExchange: "auction_exchange",
+          deadLetterRoutingKey: "auction_end",
+        });
+        await channel.bindQueue(
+          "auction_end_queue",
+          "auction_exchange",
+          "auction_end",
+        );
+        // the bid is kept in delay queue and then it is sent to end queue(which is dead letter queue here) when it reaches its time to live(TTL)
+        const delay = new Date(endsAt).getTime() - Date.now();
+        channel.sendToQueue(
+          "auction_delay_queue",
+          Buffer.from(
+            JSON.stringify({
+              auctionId: result[0]?.id,
+            }),
+          ),
+          {
+            expiration: delay.toString(),
+          },
+        );
+      } catch (error: any) {
+        console.log(error);
+        res.status(500).json({
+          message: "Failed to queue auction end time",
+        });
+      }
+    }
     return res.status(201).json({
       message: "Auction created successfully",
       auction: result[0],
@@ -81,45 +120,102 @@ export const updateAuctionItem = TryCatch(
     }
 
     const { id } = req.params;
-
+    if (!id) {
+      return res.status(404).json({
+        success: false,
+        message: "Auction id not found",
+      });
+    }
     const { title, details, startingPrice, category, endsAt, auction_status } =
       req.body;
 
-    const existing = await sql`
-  SELECT * FROM auction_items WHERE id = ${id} LIMIT 1
-` as AuctionItem[];
+    const existing = (await sql`
+      SELECT * FROM auction_items WHERE id = ${id} LIMIT 1
+    `) as AuctionItem[];
 
-if (!existing.length || !existing[0]) {
-  return res.status(404).json({
-    success: false,
-    message: "Auction not found.",
-  });
-}
+    if (!existing.length || !existing[0]) {
+      return res.status(404).json({
+        success: false,
+        message: "Auction not found.",
+      });
+    }
 
-const auction: AuctionItem = existing[0]; // ✅ now safely typed, no undefined error
+    const auction: AuctionItem = existing[0];
 
-// use auction.title, auction.images etc. below
-const updated = await sql`
-  UPDATE auction_items
-  SET
-    title           = ${title?.trim() ?? auction.title},
-    details         = ${details?.trim() ?? auction.details},
-    starting_price  = ${startingPrice ? parseFloat(startingPrice) : auction.starting_price},
-    category        = ${category ?? auction.category},
-    ends_at         = ${endsAt ? new Date(endsAt) : auction.ends_at},
-    auction_status  = ${auction_status ?? auction.auction_status},
-    images          = ${auction.images},
-    updated_at      = NOW()
-  WHERE id = ${id}
-  RETURNING *
-` as AuctionItem[];
+    const updated = (await sql`
+      UPDATE auction_items
+      SET
+        title           = ${title?.trim() ?? auction.title},
+        details         = ${details?.trim() ?? auction.details},
+        starting_price  = ${startingPrice ? parseFloat(startingPrice) : auction.starting_price},
+        category        = ${category ?? auction.category},
+        ends_at         = ${endsAt ? new Date(endsAt) : auction.ends_at},
+        auction_status  = ${auction_status ?? auction.auction_status},
+        images          = ${auction.images},
+        updated_at      = NOW()
+      WHERE id = ${id}
+      RETURNING *
+    `) as AuctionItem[];
+    if (!updated.length || !updated[0]) {
+      return res.status(404).json({
+        success: false,
+        message: "Failed to update auction.",
+      });
+    }
+
+    const updatedAuction = updated[0];
+
+    try {
+      const auctionKey = getAuctionListKey();
+
+      if (redisClient.isReady) {
+        if (auction_status === "DELETED" || auction_status === "CANCELLED") {
+          // Remove this auction from the hash entirely
+          await redisClient.hDel(auctionKey, id.toString());
+          console.log(`Redis: removed auction ${id} from cache`);
+        } else {
+          // Update just this auction's field in the hash
+          await redisClient.hSet(
+            auctionKey,
+            id.toString(),
+            JSON.stringify({
+              id: updatedAuction.id,
+              title: updatedAuction.title,
+              current_highest_bid: updatedAuction.current_highest_bid,
+              images: updatedAuction.images,
+              auction_status: updatedAuction.auction_status,
+              ends_at: updatedAuction.ends_at,
+              category: updatedAuction.category,
+            }),
+          );
+          console.log(`Redis: updated auction ${id} in cache`);
+        }
+      }
+    } catch (error) {
+      console.error(`Redis sync failed for auction ${id}:`, error);
+    }
+
+    if (
+      auction.auction_status !== "ENDED" &&
+      updatedAuction?.auction_status === "ENDED"
+    ) {
+      channel.publish(
+        "auction_exchange",
+        "auction_ended",
+        Buffer.from(
+          JSON.stringify({
+            auctionId: id,
+          }),
+        ),
+      );
+    }
 
     return res.status(200).json({
       success: true,
       message: "Auction updated successfully.",
-      auction: updated[0],
+      auction: updatedAuction,
     });
-  }
+  },
 );
 
 export const deleteAuctionItem = TryCatch(

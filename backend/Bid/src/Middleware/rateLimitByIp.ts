@@ -1,5 +1,6 @@
 import type { NextFunction, Response, Request } from "express";
 import { redisClient } from "../index.js";
+import { getBidRateLimitIpKey } from "../utils/key.js";
 
 export const rateLimitByIp = async (
   req: Request,
@@ -11,14 +12,22 @@ export const rateLimitByIp = async (
       (req.headers["x-forwarded-for"] as string) ||
       req.socket.remoteAddress ||
       "unknown";
-    const key = `bid_rate_limit_ip:${clientIp}`;
+    const hashKey = getBidRateLimitIpKey();
     const maxRequests = 5;
     const windowSeconds = 60;
 
-    const currentCount = await redisClient.incr(key);
+    const currentCountStr = await redisClient.hGet(hashKey, clientIp);
+    const currentCount = currentCountStr ? parseInt(currentCountStr, 10) + 1 : 1;
 
+    // Set the new count in the hash
+    await redisClient.hSet(hashKey, clientIp, currentCount.toString());
+
+    // Set expiry on first request for this IP
     if (currentCount === 1) {
-      await redisClient.expire(key, windowSeconds);
+      await redisClient.expireAt(
+        hashKey,
+        Math.floor(Date.now() / 1000) + windowSeconds,
+      );
     }
 
     if (currentCount > maxRequests) {

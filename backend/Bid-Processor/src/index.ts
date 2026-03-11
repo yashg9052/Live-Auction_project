@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 dotenv.config();
 import { createClient } from "redis";
 import { connectRabbitMq } from "./config/rabbitMq.js";
-import { processBids } from "./Consumer.js";
+import { endAuctions, processBids } from "./Consumer.js";
 import { initDB } from "./config/db.js";
 import { app, server } from "./config/socket.js";
 
@@ -20,6 +20,7 @@ redisClient
 await connectRabbitMq();
 await initDB();
 processBids();
+endAuctions();
 
 server.listen(PORT, () => {
   console.log(`Listening to port ${PORT}`);

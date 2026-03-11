@@ -71,11 +71,11 @@ const getActiveBidsFromAPI = async (): Promise<BidItem[]> => {
 const getWonItemsFromAPI = async (): Promise<BidItem[]> => {
   try {
     const token = Cookies.get("token");
-    const auction_server = "http://localhost:5003";  // ✅ fixed template literal bug
+    const auction_server = "http://localhost:5003"; 
     const response = await fetch(`${auction_server}/api/v1/won-items`, {
       method: "GET",
       headers: {
-        token: token || "",          // ✅ matches req.headers.token
+        token: token || "",         
         "Content-Type": "application/json",
       },
     });

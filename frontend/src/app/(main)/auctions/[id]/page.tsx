@@ -3,9 +3,10 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 import { useAuctionData } from "@/src/context/AuctionContext";
 import Cookies from "js-cookie";
-import { Clock, ArrowLeft } from "lucide-react";
+import { Clock, ArrowLeft, Trophy } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { UseSocketData } from "@/src/context/SocketContext";
+import toast from "react-hot-toast";
 
 interface Bid {
   id: string;
@@ -33,6 +34,7 @@ interface AuctionDetail {
   updated_at: string;
   bids: Bid[];
 }
+
 export interface UpdateAuction {
   current_highest_bid: number;
   current_highest_bidder_id: number;
@@ -41,6 +43,7 @@ export interface UpdateAuction {
   approved_at: string | null;
   bids: Bid[];
 }
+
 function useCountdown(endsAt: string) {
   const calc = () => {
     const diff = new Date(endsAt).getTime() - Date.now();
@@ -77,10 +80,11 @@ export default function AuctionDetailPage({
   const { id } = React.use(params);
   const router = useRouter();
 
+  const [auctionEnded, setAuctionEnded] = useState(false);
+  const [winner, setWinner] = useState<{ name: string; amount: number; winnerId: string } | null>(null);
   const [auction, setAuction] = useState<AuctionDetail | null>(null);
-  const [highestBid, setHighestBid] = useState<number | null>(
-    auction?.current_highest_bid ?? null,
-  );
+  const [highestBid, setHighestBid] = useState<number | null>(null);
+  const [highestBidderId, setHighestBidderId] = useState<string | null>(null);
   const [bids, setBids] = useState<Bid[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,6 +97,10 @@ export default function AuctionDetailPage({
   } | null>(null);
   const cooldownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const { days, hours, minutes, seconds, ended } = useCountdown(
+    auction?.ends_at ?? "",
+  );
+
   useEffect(() => {
     const load = async () => {
       try {
@@ -101,34 +109,78 @@ export default function AuctionDetailPage({
         const data = await fetchAuctionDetail(id);
         setBids(data.bids ?? []);
         setAuction(data);
+        setHighestBid(data.current_highest_bid);
+        setHighestBidderId(data.current_highest_bidder_id);
         setBidValue(data.current_highest_bid + 500);
-      } catch {
-        setError("Something went wrong. Please try again.");
+      } catch (err) {
+        const errorMsg = "Something went wrong. Please try again.";
+        setError(errorMsg);
+        toast.error(errorMsg);
       } finally {
         setLoading(false);
       }
     };
     load();
   }, [id]);
-useEffect(() => {
-  if (!socket || !auction?.id) return;
-  socket.emit("joined-auction", auction.id);
 
-  const handler = (newBid: Bid) => {   // ← remove destructuring
-    setBids((prev) => [newBid, ...prev]);
-    setHighestBid(newBid.amount);
-  };
+  useEffect(() => {
+    if (ended) setAuctionEnded(true);
+  }, [ended]);
 
-  socket.on("new-highest-bid", handler);
-  return () => {
-    socket.off("new-highest-bid", handler);
-    socket.emit("leaveAuction", auction.id);
-  };
-}, [socket, auction?.id]);
+  useEffect(() => {
+    if (!socket || !auction?.id) return;
+    socket.emit("joined-auction", auction.id);
 
-  const { days, hours, minutes, seconds, ended } = useCountdown(
-    auction?.ends_at ?? "",
-  );
+    const handler = (newBid: Bid) => {
+      setBids((prev) => [newBid, ...prev]);
+      setHighestBid(newBid.amount);
+      setHighestBidderId(newBid.user_id);
+      toast.success(`New bid: ${new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(newBid.amount)} by ${newBid.username}`, {
+        duration: 3000,
+        position: "top-right",
+      });
+    };
+
+    const endedHandler = ({
+      winner,
+      winnerId,
+      amount,
+    }: {
+      winner: string;
+      winnerId: string;
+      amount: number;
+    }) => {
+      setAuctionEnded(true);
+      setWinner({ name: winner, amount, winnerId });
+      toast(
+        (t) => (
+          <div className="flex items-center gap-3">
+            <Trophy className="w-5 h-5 text-yellow-500 flex-shrink-0" />
+            <div>
+              <p className="font-semibold text-sm">Auction Ended!</p>
+              <p className="text-xs text-gray-500">
+                Won by <span className="font-medium">{winner}</span>
+              </p>
+            </div>
+          </div>
+        ),
+        { duration: 6000, position: "top-right" }
+      );
+    };
+
+    socket.on("new-highest-bid", handler);
+    socket.on("auctionEnded", endedHandler);
+
+    return () => {
+      socket.off("new-highest-bid", handler);
+      socket.off("auctionEnded", endedHandler);
+      socket.emit("leaveAuction", auction.id);
+    };
+  }, [socket, auction?.id]);
+
+  const isCurrentHighestBidder = !!user && highestBidderId === user._id;
+  const isAuctionActive = auction?.auction_status === "ACTIVE" && !auctionEnded;
+  const isWinner = !!user && winner?.winnerId === user._id;
 
   const formatINR = (n: number) =>
     new Intl.NumberFormat("en-IN", {
@@ -139,28 +191,35 @@ useEffect(() => {
 
   const shortId = (uid: string) => "User " + uid.slice(-6).toUpperCase();
 
-  const timeAgo = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime();
-    const m = Math.floor(diff / 60000);
-    if (m < 1) return "just now";
-    if (m < 60) return `${m}m ago`;
-    return `${Math.floor(m / 60)}h ago`;
+  const formatDateTime = (iso: string) => {
+    return new Date(iso).toLocaleString("en-IN", {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
   };
 
   const handlePlaceBid = useCallback(async () => {
-    if (!auction || cooldown || user?.role === "admin") return;
+    if (!auction || cooldown || user?.role === "admin" || isCurrentHighestBidder ||!isAuctionActive) return;
 
     if (user?.banned) {
-      setBidMsg({ type: "error", text: "You have been banned from bidding." });
+      const msg = "You have been banned from bidding.";
+      setBidMsg({ type: "error", text: msg });
+      toast.error(msg);
       return;
     }
 
-    const minBid = auction.current_highest_bid + 1;
+    const minBid = (highestBid ?? auction.current_highest_bid) + 1;
     if (bidValue < minBid) {
+      const msg = `Bid must be at least ${formatINR(minBid)}`;
       setBidMsg({
         type: "error",
-        text: `Bid must be at least ${formatINR(minBid)}`,
+        text: msg,
       });
+      toast.error(msg);
       return;
     }
 
@@ -177,15 +236,19 @@ useEffect(() => {
       const data: { message: string } = await res.json();
 
       if (!res.ok) {
+        const errMsg = data.message ?? "Failed to place bid. Try again.";
         setBidMsg({
           type: "error",
-          text: data.message ?? "Failed to place bid. Try again.",
+          text: errMsg,
         });
+        toast.error(errMsg);
         return;
       }
 
       setCooldown(true);
-      setBidMsg({ type: "success", text: "Bid placed successfully!" });
+      const successMsg = "Bid placed successfully!";
+      setBidMsg({ type: "success", text: successMsg });
+      toast.success(successMsg);
       setAuction((prev) =>
         prev ? { ...prev, current_highest_bid: bidValue } : prev,
       );
@@ -196,18 +259,18 @@ useEffect(() => {
         setBidMsg(null);
       }, 2000);
     } catch {
-      setBidMsg({ type: "error", text: "Failed to place bid. Try again." });
+      const errMsg = "Failed to place bid. Try again.";
+      setBidMsg({ type: "error", text: errMsg });
+      toast.error(errMsg);
     }
-  }, [auction, bidValue, cooldown, id]);
+  }, [auction, bidValue, cooldown, id, isCurrentHighestBidder, highestBid]);
 
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-sm text-gray-500 font-medium">
-            Loading auction...
-          </p>
+          <p className="text-sm text-gray-500 font-medium">Loading auction...</p>
         </div>
       </div>
     );
@@ -218,20 +281,12 @@ useEffect(() => {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
         <div className="bg-white rounded-2xl border border-red-100 shadow-sm p-8 max-w-md w-full text-center">
           <div className="w-12 h-12 bg-red-50 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-6 h-6 text-red-400"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-            >
+            <svg className="w-6 h-6 text-red-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <circle cx="12" cy="12" r="10" />
               <path d="M12 8v4M12 16h.01" strokeLinecap="round" />
             </svg>
           </div>
-          <p className="text-gray-800 font-semibold mb-2">
-            Failed to load auction
-          </p>
+          <p className="text-gray-800 font-semibold mb-2">Failed to load auction</p>
           <p className="text-sm text-gray-400 mb-5">{error}</p>
           <button
             onClick={() => window.location.reload()}
@@ -244,26 +299,22 @@ useEffect(() => {
     );
   }
 
-  const minBid = auction.current_highest_bid + 1;
+  const minBid = (highestBid ?? auction.current_highest_bid) + 1;
   const isEndingSoon =
-    !ended &&
-    new Date(auction.ends_at).getTime() - Date.now() <= 10 * 60 * 1000;
-  const countdownColor = ended
+    !auctionEnded && new Date(auction.ends_at).getTime() - Date.now() <= 10 * 60 * 1000;
+  const countdownColor = auctionEnded
     ? "text-gray-400"
     : isEndingSoon
       ? "text-red-500"
       : "text-blue-600";
-  const countdownLabel = ended
+  const countdownLabel = auctionEnded
     ? "Auction Ended"
     : days > 0
       ? `${days}d ${hours}h ${minutes}m ${seconds}s`
       : `${hours > 0 ? hours + "h " : ""}${minutes}m ${seconds}s`;
 
   const sortedBids = [...bids]
-    .sort(
-      (a, b) =>
-        new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
-    )
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 15);
 
   return (
@@ -282,6 +333,7 @@ useEffect(() => {
         </h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-6 sm:gap-8">
+          {/* Left Column */}
           <div className="flex flex-col gap-4">
             <div className="relative w-full aspect-[4/3] rounded-2xl overflow-hidden bg-white border border-gray-100 shadow-sm">
               <Image
@@ -292,9 +344,15 @@ useEffect(() => {
                 priority
               />
               <span
-                className={`absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-semibold shadow flex items-center gap-1.5 ${ended ? "bg-gray-200 text-gray-600" : isEndingSoon ? "bg-orange-100 text-orange-600" : "bg-green-100 text-green-700"}`}
+                className={`absolute top-4 left-4 px-3 py-1 rounded-full text-xs font-semibold shadow flex items-center gap-1.5 ${
+                  auctionEnded
+                    ? "bg-gray-200 text-gray-600"
+                    : isEndingSoon
+                      ? "bg-orange-100 text-orange-600"
+                      : "bg-green-100 text-green-700"
+                }`}
               >
-                {ended ? (
+                {auctionEnded ? (
                   <span>Ended</span>
                 ) : isEndingSoon ? (
                   <>
@@ -316,14 +374,11 @@ useEffect(() => {
                   <button
                     key={i}
                     onClick={() => setActiveImg(i)}
-                    className={`relative flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 transition-all duration-150 ${activeImg === i ? "border-blue-500 shadow-md" : "border-transparent hover:border-gray-300"}`}
+                    className={`relative flex-shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-xl overflow-hidden border-2 transition-all duration-150 ${
+                      activeImg === i ? "border-blue-500 shadow-md" : "border-transparent hover:border-gray-300"
+                    }`}
                   >
-                    <Image
-                      src={img}
-                      alt={`thumb-${i}`}
-                      fill
-                      className="object-cover"
-                    />
+                    <Image src={img} alt={`thumb-${i}`} fill className="object-cover" />
                   </button>
                 ))}
               </div>
@@ -333,37 +388,29 @@ useEffect(() => {
               <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-3">
                 Item Details
               </h3>
-              <p className="text-gray-700 text-sm leading-relaxed">
-                {auction.details}
-              </p>
+              <p className="text-gray-700 text-sm leading-relaxed">{auction.details}</p>
               <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">
-                    Category
-                  </p>
+                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Category</p>
                   <span className="inline-block bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-medium">
                     {auction.category}
                   </span>
                 </div>
                 <div>
-                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">
-                    Starting Price
-                  </p>
-                  <p className="font-semibold text-gray-800">
-                    {formatINR(auction.starting_price)}
-                  </p>
+                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Starting Price</p>
+                  <p className="font-semibold text-gray-800">{formatINR(auction.starting_price)}</p>
                 </div>
               </div>
             </div>
           </div>
 
+          {/* Right Column */}
           <div className="flex flex-col gap-5">
             <div className="hidden lg:block">
-              <h1 className="text-2xl font-bold text-gray-900">
-                {auction.title}
-              </h1>
+              <h1 className="text-2xl font-bold text-gray-900">{auction.title}</h1>
             </div>
 
+            {/* Highest Bid + Countdown */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-center justify-between">
                 <div>
@@ -371,9 +418,7 @@ useEffect(() => {
                     Highest Bid
                   </p>
                   <p className="text-3xl font-bold text-red-500">
-                    {formatINR(
-                      highestBid ? highestBid : auction?.current_highest_bid,
-                    )}
+                    {formatINR(highestBid ?? auction.current_highest_bid)}
                   </p>
                 </div>
                 <div className="w-3 h-3 rounded-full bg-red-400 animate-pulse" />
@@ -390,131 +435,152 @@ useEffect(() => {
                   <path d="M12 6v6l4 2" strokeLinecap="round" />
                 </svg>
                 <span className="text-sm text-gray-500">Ends in:</span>
-                <span className={`text-sm font-bold ${countdownColor}`}>
-                  {countdownLabel}
-                </span>
+                <span className={`text-sm font-bold ${countdownColor}`}>{countdownLabel}</span>
               </div>
             </div>
 
-            {!ended && (
-              <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
-                <p className="text-sm font-bold text-gray-800 mb-4">
-                  Bidding Console
-                </p>
-                <div className="relative mb-3">
-                  <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">
-                    ₹
-                  </span>
-                  <input
-                    type="number"
-                    value={bidValue}
-                    onChange={(e) => setBidValue(Number(e.target.value))}
-                    min={minBid}
-                    className="w-full h-12 pl-8 pr-4 border border-gray-200 rounded-xl text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition"
-                  />
+            {/* Winner Banner */}
+            {auctionEnded && winner && (
+              <div className={`rounded-2xl border p-5 flex flex-col items-center gap-3 text-center ${
+                isWinner
+                  ? "bg-yellow-50 border-yellow-200"
+                  : "bg-gray-50 border-gray-200"
+              }`}>
+                <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                  isWinner ? "bg-yellow-100" : "bg-gray-100"
+                }`}>
+                  <Trophy className={`w-6 h-6 ${isWinner ? "text-yellow-500" : "text-gray-400"}`} />
                 </div>
-                <p className="text-xs text-gray-400 mb-3">
-                  Minimum bid:{" "}
-                  <span className="font-semibold text-gray-600">
-                    {formatINR(minBid)}
-                  </span>
-                </p>
-                {bidMsg && (
-                  <p
-                    className={`text-xs mb-3 font-medium ${bidMsg.type === "success" ? "text-green-600" : "text-red-500"}`}
-                  >
-                    {bidMsg.text}
+                <div>
+                  <p className={`text-sm font-bold mb-0.5 ${isWinner ? "text-yellow-800" : "text-gray-700"}`}>
+                    {isWinner ? "🎉 Congratulations! You Won!" : "Auction Ended"}
                   </p>
-                )}
-                <button
-                  onClick={isLoggedIn ? handlePlaceBid : undefined}
-                  disabled={cooldown || !isLoggedIn}
-                  className={`w-full h-12 cursor-pointer rounded-xl text-sm font-semibold transition-all duration-150 ${!isLoggedIn ? "bg-gray-100 text-gray-400 cursor-not-allowed" : cooldown ? "bg-blue-300 text-white cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white shadow-md shadow-blue-200"}`}
-                >
-                  {!isLoggedIn
-                    ? "Please Login to place a Bid"
-                    : cooldown
-                      ? "Processing…"
-                      : "Place Bid"}
-                </button>
+                  <p className={`text-xs mb-2 ${isWinner ? "text-yellow-600" : "text-gray-500"}`}>
+                    Won by <span className="font-semibold">{winner.name}</span>
+                  </p>
+                  <p className={`text-xl font-bold ${isWinner ? "text-yellow-600" : "text-gray-600"}`}>
+                    {formatINR(winner.amount)}
+                  </p>
+                </div>
               </div>
             )}
 
+            {/* Bidding Console */}
+            {!auctionEnded && (
+  <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+    <p className="text-sm font-bold text-gray-800 mb-4">Bidding Console</p>
+
+    {!isAuctionActive ? (
+      <div className="flex flex-col items-center gap-2 py-4 px-3 bg-orange-50 rounded-xl border border-orange-100">
+        <p className="text-sm font-semibold text-orange-700">Auction is Currently Paused</p>
+        <p className="text-xs text-orange-500 text-center">Bidding is temporarily disabled. Please wait.</p>
+      </div>
+    ) : isCurrentHighestBidder ? (
+      <div className="flex flex-col items-center gap-2 py-4 px-3 bg-green-50 rounded-xl border border-green-100">
+        <div className="w-8 h-8 rounded-full bg-green-100 flex items-center justify-center">
+          <svg className="w-4 h-4 text-green-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </div>
+        <p className="text-sm font-semibold text-green-700">You are the highest bidder!</p>
+        <p className="text-xs text-green-500 text-center">You'll be notified if someone outbids you.</p>
+      </div>
+    ) : (
+      <>
+        <div className="relative mb-3">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-sm font-medium">₹</span>
+          <input
+            type="number"
+            value={bidValue}
+            onChange={(e) => setBidValue(Number(e.target.value))}
+            min={minBid}
+            className="w-full h-12 pl-8 pr-4 border border-gray-200 rounded-xl text-sm text-gray-800 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 transition"
+          />
+        </div>
+        <p className="text-xs text-gray-400 mb-3">
+          Minimum bid: <span className="font-semibold text-gray-600">{formatINR(minBid)}</span>
+        </p>
+        {bidMsg && (
+          <p className={`text-xs mb-3 font-medium ${bidMsg.type === "success" ? "text-green-600" : "text-red-500"}`}>
+            {bidMsg.text}
+          </p>
+        )}
+        <button
+          onClick={isLoggedIn ? handlePlaceBid : undefined}
+          disabled={cooldown || !isLoggedIn}
+          className={`w-full h-12 cursor-pointer rounded-xl text-sm font-semibold transition-all duration-150 ${
+            !isLoggedIn
+              ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+              : cooldown
+                ? "bg-blue-300 text-white cursor-not-allowed"
+                : "bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white shadow-md shadow-blue-200"
+          }`}
+        >
+          {!isLoggedIn ? "Please Login to place a Bid" : cooldown ? "Processing…" : "Place Bid"}
+        </button>
+      </>
+    )}
+  </div>
+)}
+            {/* Live Bid History */}
             <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <div className="flex items-center gap-2 mb-1">
                 <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-                <p className="text-sm font-bold text-gray-800">
-                  Live Bid History Feed
-                </p>
+                <p className="text-sm font-bold text-gray-800">Live Bid History Feed</p>
               </div>
               <div className="flex flex-col divide-y divide-gray-50">
                 {sortedBids.length === 0 && (
-                  <p className="text-xs text-gray-400 text-center py-4">
-                    No bids yet. Be the first!
-                  </p>
+                  <p className="text-xs text-gray-400 text-center py-4">No bids yet. Be the first!</p>
                 )}
                 {sortedBids.map((bid, i) => (
                   <div
                     key={bid.id}
-                    className={`flex items-center justify-between py-3 ${i === 0 ? "bg-green-50 -mx-5 px-5 rounded-xl" : ""}`}
+                    className={`flex items-center justify-between py-3 ${
+                      i === 0 ? "bg-green-50 -mx-5 px-5 rounded-xl" : ""
+                    }`}
                   >
                     <div className="flex items-center gap-3">
                       <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${i === 0 ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"}`}
+                        className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${
+                          i === 0 ? "bg-green-100 text-green-700" : "bg-gray-100 text-gray-500"
+                        }`}
                       >
-                        {bid.username
-                          ? bid.username[0].toUpperCase()
-                          : shortId(bid.user_id).slice(-2)}
+                        {bid.username ? bid.username[0].toUpperCase() : shortId(bid.user_id).slice(-2)}
                       </div>
                       <div>
                         <p className="text-sm font-medium text-gray-800">
                           {bid.username ? bid.username : shortId(bid.user_id)}
                         </p>
-                        <p className="text-xs text-gray-400">
-                          {timeAgo(bid.created_at)}
-                        </p>
+                        <p className="text-xs text-gray-400">{formatDateTime(bid.created_at)}</p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p
-                        className={`text-sm font-bold ${i === 0 ? "text-green-600" : "text-gray-700"}`}
-                      >
+                      <p className={`text-sm font-bold ${i === 0 ? "text-green-600" : "text-gray-700"}`}>
                         {formatINR(bid.amount)}
                       </p>
-                      {i === 0 && (
-                        <p className="text-xs text-green-500 font-medium">
-                          Highest
-                        </p>
-                      )}
+                      {i === 0 && <p className="text-xs text-green-500 font-medium">Highest</p>}
                     </div>
                   </div>
                 ))}
               </div>
             </div>
 
+            {/* Mobile Item Details */}
             <div className="lg:hidden bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
               <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-widest mb-3">
                 Item Details
               </h3>
-              <p className="text-gray-700 text-sm leading-relaxed">
-                {auction.details}
-              </p>
+              <p className="text-gray-700 text-sm leading-relaxed">{auction.details}</p>
               <div className="mt-4 pt-4 border-t border-gray-100 grid grid-cols-2 gap-3 text-sm">
                 <div>
-                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">
-                    Category
-                  </p>
+                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Category</p>
                   <span className="inline-block bg-blue-50 text-blue-600 px-3 py-1 rounded-full text-xs font-medium">
                     {auction.category}
                   </span>
                 </div>
                 <div>
-                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">
-                    Starting Price
-                  </p>
-                  <p className="font-semibold text-gray-800">
-                    {formatINR(auction.starting_price)}
-                  </p>
+                  <p className="text-gray-400 text-xs uppercase tracking-wide mb-1">Starting Price</p>
+                  <p className="font-semibold text-gray-800">{formatINR(auction.starting_price)}</p>
                 </div>
               </div>
             </div>

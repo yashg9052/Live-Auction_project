@@ -8,6 +8,7 @@ import { publishToQueue } from "../config/rabbitMq.js";
 import type { AuthenticatedRequest } from "../Middleware/isAuth.js";
 import { redisClient } from "../index.js";
 import { createSession, deleteSession, deleteSessionByUserId } from "../utils/sessionUtils.js";
+import { getOtpDataKey, getOtpRateLimitKey, getUserListKey } from "../utils/key.js";
 
 interface GoogleClaims {
   sub: string;
@@ -131,20 +132,23 @@ export const ForgotPassword = TryCatch(async (req: Request, res: Response) => {
     });
   }
 
-  const rateLimitKey = `otp:ratelimit:${email}`;
-  const rateLimit = await redisClient.get(rateLimitKey);
+  const otpRateLimitKey = getOtpRateLimitKey();
+  const rateLimitCheck = await redisClient.hGet(otpRateLimitKey, email);
 
-  if (rateLimit) {
+  if (rateLimitCheck) {
     return res.status(429).json({
       message: "Too many requests. Please wait before requesting a new OTP",
     });
   }
 
   const otp = Math.floor(100000 + Math.random() * 900000).toString();
-  const otpKey = `otp:${email}`;
+  const otpDataKey = getOtpDataKey();
 
-  await redisClient.set(otpKey, otp, { EX: 300 });
-  await redisClient.set(rateLimitKey, "true", { EX: 60 });
+  await redisClient.hSet(otpDataKey, email, otp);
+  await redisClient.expireAt(otpDataKey, Math.floor(Date.now() / 1000) + 300);
+
+  await redisClient.hSet(otpRateLimitKey, email, "true");
+  await redisClient.expireAt(otpRateLimitKey, Math.floor(Date.now() / 1000) + 60);
 
   const message = {
     to: email,
@@ -166,14 +170,14 @@ export const verifyUser = TryCatch(async (req: Request, res: Response) => {
     return res.status(400).json({ message: "Email and OTP are required" });
   }
 
-  const otpKey = `otp:${email}`;
-  const storedOtp = await redisClient.get(otpKey);
+  const otpDataKey = getOtpDataKey();
+  const storedOtp = await redisClient.hGet(otpDataKey, email);
 
   if (!storedOtp || storedOtp !== enteredOtp) {
     return res.status(400).json({ message: "Invalid or expired OTP" });
   }
 
-  await redisClient.del(otpKey);
+  await redisClient.hDel(otpDataKey, email);
 
   const user: IUser | null = await User.findOne({ email });
 
@@ -204,14 +208,14 @@ export const getAllUser = TryCatch(async (req: AuthenticatedRequest, res) => {
       message: "Unauthorized. Only admins can unban users",
     });
   }
-  const Users_key = "Users:list";
+  const Users_key = getUserListKey();
   if (redisClient.isReady) {
     const cached = await redisClient.hGetAll(Users_key);
     if (Object.keys(cached).length > 0) {
       console.log("cache hit");
       const users: IUser[] = Object.values(cached).map((u) => JSON.parse(u));
       return res.status(200).json({
-        message: "Auctions fetched from cache",
+        message: "Users fetched from cache",
         users,
       });
     }
