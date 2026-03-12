@@ -1,11 +1,12 @@
-import { sql } from "../config/db.js";
+import { getDB, sql } from "../config/db.js";
 import getBuffer from "../utils/getBuffer.js";
 import cloudinary from "cloudinary";
 import TryCatch from "../utils/TryCatch.js";
 import type { AuthenticatedRequest } from "../middleware/isAuth.js";
-import { channel } from "../config/rabbitMq.js";
+import { channel, publishToQueue } from "../config/rabbitMq.js";
 import { redisClient } from "../index.js";
 import { getAuctionListKey } from "../utils/key.js";
+import { ObjectId } from "mongodb";
 export interface AuctionItem {
   id: number;
   title: string;
@@ -118,7 +119,6 @@ export const updateAuctionItem = TryCatch(
         message: "Access denied. Admins only.",
       });
     }
-
     const { id } = req.params;
     if (!id) {
       return res.status(404).json({
@@ -126,21 +126,20 @@ export const updateAuctionItem = TryCatch(
         message: "Auction id not found",
       });
     }
-    const { title, details, startingPrice, category, endsAt, auction_status } =
-      req.body;
+    const { title, details, startingPrice, category, auction_status, endNow } = req.body;
 
     const existing = (await sql`
       SELECT * FROM auction_items WHERE id = ${id} LIMIT 1
     `) as AuctionItem[];
-
     if (!existing.length || !existing[0]) {
       return res.status(404).json({
         success: false,
         message: "Auction not found.",
       });
     }
-
     const auction: AuctionItem = existing[0];
+
+    const resolvedEndsAt = endNow === "true" || endNow === true ? new Date() : auction.ends_at;
 
     const updated = (await sql`
       UPDATE auction_items
@@ -149,7 +148,7 @@ export const updateAuctionItem = TryCatch(
         details         = ${details?.trim() ?? auction.details},
         starting_price  = ${startingPrice ? parseFloat(startingPrice) : auction.starting_price},
         category        = ${category ?? auction.category},
-        ends_at         = ${endsAt ? new Date(endsAt) : auction.ends_at},
+        ends_at         = ${resolvedEndsAt},
         auction_status  = ${auction_status ?? auction.auction_status},
         images          = ${auction.images},
         updated_at      = NOW()
@@ -162,19 +161,13 @@ export const updateAuctionItem = TryCatch(
         message: "Failed to update auction.",
       });
     }
-
     const updatedAuction = updated[0];
-
     try {
       const auctionKey = getAuctionListKey();
-
       if (redisClient.isReady) {
         if (auction_status === "DELETED" || auction_status === "CANCELLED") {
-          // Remove this auction from the hash entirely
           await redisClient.hDel(auctionKey, id.toString());
-          console.log(`Redis: removed auction ${id} from cache`);
         } else {
-          // Update just this auction's field in the hash
           await redisClient.hSet(
             auctionKey,
             id.toString(),
@@ -188,7 +181,6 @@ export const updateAuctionItem = TryCatch(
               category: updatedAuction.category,
             }),
           );
-          console.log(`Redis: updated auction ${id} in cache`);
         }
       }
     } catch (error) {
@@ -202,11 +194,7 @@ export const updateAuctionItem = TryCatch(
       channel.publish(
         "auction_exchange",
         "auction_ended",
-        Buffer.from(
-          JSON.stringify({
-            auctionId: id,
-          }),
-        ),
+        Buffer.from(JSON.stringify({ auctionId: id })),
       );
     }
 
@@ -246,6 +234,45 @@ export const deleteAuctionItem = TryCatch(
     return res.status(200).json({
       message: "Auction deleted successfully",
       auction: result[0],
+    });
+  },
+);
+
+export const changeBanStatus = TryCatch(
+  async (req: AuthenticatedRequest, res) => {
+    if (!req.user || req.user.role !== "admin") {
+      return res.status(403).json({ message: "Forbidden: Admins only" });
+    }
+
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ message: "User ID is required" });
+    }
+
+    const db = getDB();
+
+    const user = await db
+      .collection("users")
+      .findOne({ _id: new ObjectId(userId) }, { projection: { banned: 1 } });
+    console.log(user, userId);
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    if (!channel) {
+      return res.status(500).json({ message: "Queue not available" });
+    }
+
+    const newBanStatus = !user.banned;
+
+    await publishToQueue("ban_queue", { userId, banned: newBanStatus });
+
+    console.log(`Ban job queued for user ${userId}: banned=${newBanStatus}`);
+
+    return res.status(200).json({
+      message: "User ban status change queued successfully",
+      userId,
+      banned: newBanStatus,
     });
   },
 );

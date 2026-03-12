@@ -12,8 +12,8 @@ export interface IAuction {
   images: string[];
   ending_at: string;
   auction_status: "ACTIVE" | "ENDED" | "CANCELLED";
-  category:string;
-  ends_at:string
+  category: string;
+  ends_at: string;
 }
 export interface Ibid {
   id: string;
@@ -28,7 +28,10 @@ export interface IAuctiondetail {
   title: string;
   details: string;
   starting_price: number;
-  current_highest_bid: number;
+  current_highest_bid: number |null;
+  current_highest_bidder_username:string|null;
+  current_highest_bidder_id:string|null;
+  current_highest_bid_time:Date|null;
   images: string[] | null;
   category: string;
   auction_status: "ACTIVE" | "ENDED" | "CANCELLED";
@@ -87,11 +90,12 @@ export const getSingleAuctionDetail = TryCatch(
         message: "Auction ID is required",
       });
     }
+    const auctionId = id as string;
 
     const auctionDetailKey = getAuctionDetailKey();
 
     if (redisClient.isReady) {
-      const cached = await redisClient.hGet(auctionDetailKey, id);
+      const cached = await redisClient.hGet(auctionDetailKey, auctionId);
 
       if (cached) {
         console.log("Cache hit");
@@ -108,7 +112,7 @@ export const getSingleAuctionDetail = TryCatch(
     const [auctionRow] = (await sql`
   SELECT *
   FROM auction_items
-  WHERE id = ${id};
+  WHERE id = ${auctionId};
 `) as IAuctiondetail[];
 
     if (!auctionRow) {
@@ -117,7 +121,7 @@ export const getSingleAuctionDetail = TryCatch(
       });
     }
     const bids = (await sql`
-  SELECT * FROM bids WHERE auction_id = ${id}
+  SELECT * FROM bids WHERE auction_id = ${auctionId}
 `) as Ibid[];
 
     const auctionData: IAuctiondetail = {
@@ -126,6 +130,9 @@ export const getSingleAuctionDetail = TryCatch(
       details: auctionRow.details!,
       starting_price: auctionRow.starting_price!,
       current_highest_bid: auctionRow.current_highest_bid!,
+      current_highest_bidder_id:auctionRow.current_highest_bidder_id,
+      current_highest_bidder_username:auctionRow.current_highest_bidder_username,
+      current_highest_bid_time:auctionRow.current_highest_bid_time,
       images: auctionRow.images ?? null,
       category: auctionRow.category!,
       auction_status: auctionRow.auction_status!,
@@ -138,13 +145,14 @@ export const getSingleAuctionDetail = TryCatch(
     if (redisClient.isReady) {
       await redisClient.hSet(
         auctionDetailKey,
-        id,
+        auctionId,
         JSON.stringify(auctionData),
       );
-      await redisClient.expireAt(
-        auctionDetailKey,
-        Math.floor(Date.now() / 1000) + 120,
-      );
+
+      const ttl = await redisClient.ttl(auctionDetailKey); // the timer is only set once and never reset by subsequent fetches.
+      if (ttl === -1) {
+        await redisClient.expire(auctionDetailKey, 120);
+      }
     }
 
     return res.status(200).json({
@@ -239,4 +247,3 @@ export const getWonItems = TryCatch(
     });
   },
 );
-

@@ -22,7 +22,6 @@ const HomeMainContent = () => {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const categoryDropdownRef = useRef<HTMLDivElement>(null);
 
-  // Refs for GSAP targets
   const filtersRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
   const emptyStateRef = useRef<HTMLDivElement>(null);
@@ -35,12 +34,27 @@ const HomeMainContent = () => {
     { label: "Ended", value: "ENDED" },
   ];
 
-  function isEndingSoon(endingAt: string): boolean {
-    const diff = new Date(endingAt).getTime() - Date.now();
-    return diff > 0 && diff <= 10 * 60 * 1000;
+  // ✅ Fixed: 1 hour threshold, uses ends_at consistently
+  function isEndingSoon(endsAt: string): boolean {
+    const diff = new Date(endsAt).getTime() - Date.now();
+    return diff > 0 && diff <= 60 * 60 * 1000;
   }
 
-  // Close category dropdown on outside click
+  // ✅ Proper countdown label for AuctionCard
+  function getCountdownLabel(endsAt: string): string {
+    const diff = new Date(endsAt).getTime() - Date.now();
+    if (diff <= 0) return "Ended";
+
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    const minutes = Math.floor((diff % 3600000) / 60000);
+    const seconds = Math.floor((diff % 60000) / 1000);
+
+    if (days > 0) return `${days}d ${hours}h ${minutes}m`;
+    if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+    return `${minutes}m ${seconds}s`;
+  }
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (
@@ -54,7 +68,6 @@ const HomeMainContent = () => {
     return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  // Animate category dropdown open/close
   useEffect(() => {
     if (!dropdownRef.current) return;
     if (categoryOpen) {
@@ -66,12 +79,10 @@ const HomeMainContent = () => {
     }
   }, [categoryOpen]);
 
-  // Initial page-load animation: filters slide up, then cards stagger in
   useEffect(() => {
     if (!filtersRef.current || !gridRef.current) return;
 
     const ctx = gsap.context(() => {
-      // Filters fade + slide up
       gsap.from(filtersRef.current!.children, {
         opacity: 0,
         y: 24,
@@ -81,7 +92,6 @@ const HomeMainContent = () => {
         clearProps: "all",
       });
 
-      // Section heading
       gsap.from(headingRef.current, {
         opacity: 0,
         x: -16,
@@ -91,7 +101,6 @@ const HomeMainContent = () => {
         clearProps: "all",
       });
 
-      // Auction cards stagger
       const cards = gridRef.current!.querySelectorAll(".auction-card");
       gsap.from(cards, {
         opacity: 0,
@@ -106,9 +115,8 @@ const HomeMainContent = () => {
     });
 
     return () => ctx.revert();
-  }, []); // runs once on mount
+  }, []);
 
-  // Re-animate cards whenever filters change
   const isFirstRender = useRef(true);
   useEffect(() => {
     if (isFirstRender.current) {
@@ -120,7 +128,6 @@ const HomeMainContent = () => {
     const cards = gridRef.current.querySelectorAll(".auction-card");
     if (cards.length === 0) return;
 
-    // Quick fade-out then stagger back in
     gsap.fromTo(
       cards,
       { opacity: 0, y: 20, scale: 0.97 },
@@ -136,7 +143,6 @@ const HomeMainContent = () => {
     );
   }, [search, activeCategory, activeStatus]);
 
-  // Animate empty state when it appears
   useEffect(() => {
     if (!emptyStateRef.current) return;
     gsap.fromTo(
@@ -162,7 +168,8 @@ const HomeMainContent = () => {
       activeStatus === "ALL"
         ? true
         : activeStatus === "ENDING_SOON"
-          ? a.auction_status === "ACTIVE" && isEndingSoon(a.ending_at)
+          // ✅ Fixed: use ends_at (consistent with the rest of the codebase)
+          ? a.auction_status === "ACTIVE" && isEndingSoon(a.ends_at)
           : a.auction_status === activeStatus;
     return matchSearch && matchCategory && matchStatus;
   });
@@ -352,7 +359,6 @@ const HomeMainContent = () => {
             className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6"
           >
             {filteredAuctions?.map((auction) => (
-              // Added auction-card class as GSAP selector target
               <div key={auction.id} className="auction-card">
                 <AuctionCard
                   id={auction.id}
@@ -360,6 +366,9 @@ const HomeMainContent = () => {
                   current_highest_bid={auction.current_highest_bid}
                   images={auction.images}
                   ends_at={auction.ends_at}
+                  
+                  countdownLabel={getCountdownLabel(auction.ends_at)}
+                  isEndingSoon={isEndingSoon(auction.ends_at)}
                 />
               </div>
             ))}

@@ -8,20 +8,20 @@ interface AuctionCardProps {
   current_highest_bid: number;
   images: string[];
   ends_at: string;
+  countdownLabel?: string;
+  isEndingSoon?: boolean;
 }
 
 function getTimeLeft(endsAt: string): string {
   const diffMs = new Date(endsAt).getTime() - Date.now();
-
   if (diffMs <= 0) return "Ended";
-
-  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-  const hours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-  const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
+  const days = Math.floor(diffMs / 86400000);
+  const hours = Math.floor((diffMs % 86400000) / 3600000);
+  const minutes = Math.floor((diffMs % 3600000) / 60000);
+  const seconds = Math.floor((diffMs % 60000) / 1000);
   if (days > 0) return `${days}d ${hours}h ${minutes}m`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  if (hours > 0) return `${hours}h ${minutes}m ${seconds}s`;
+  return `${minutes}m ${seconds}s`;
 }
 
 export default function AuctionCard({
@@ -30,21 +30,32 @@ export default function AuctionCard({
   current_highest_bid,
   images,
   ends_at,
+  countdownLabel,
+  isEndingSoon = false,
 }: AuctionCardProps) {
-  const timeLeft = getTimeLeft(ends_at);
+  // Use passed-in label if available, otherwise compute locally
+  const timeLeft = countdownLabel ?? getTimeLeft(ends_at);
+  const ended = timeLeft === "Ended";
 
   return (
     <Link href={`/auctions/${id}`} className="w-full">
       <div className="w-full rounded-lg border border-gray-200 bg-white overflow-hidden hover:shadow-md transition-shadow duration-200 cursor-pointer">
 
         {/* Image */}
-        <div className="relative w-full h-44 bg-gray-100 ">
+        <div className="relative w-full h-44 bg-gray-100">
           <Image
             src={images[0]}
             alt={title}
             fill
             className="object-cover"
           />
+          {/* Ending soon badge */}
+          {isEndingSoon && !ended && (
+            <span className="absolute top-2 left-2 flex items-center gap-1 bg-orange-500 text-white text-[10px] font-semibold px-2 py-0.5 rounded-full shadow">
+              <Clock className="w-3 h-3" />
+              Ending Soon
+            </span>
+          )}
         </div>
 
         {/* Details */}
@@ -61,10 +72,18 @@ export default function AuctionCard({
 
           {/* Timer */}
           <div className="flex items-center gap-1 mt-1">
-            <Clock className="w-3.5 h-3.5 text-gray-400" />
+            <Clock className={`w-3.5 h-3.5 ${ended ? "text-gray-300" : isEndingSoon ? "text-orange-400" : "text-gray-400"}`} />
             <span className="text-xs text-gray-500">
-              Ends in:{" "}
-              <span className="font-medium text-red-700">{timeLeft}</span>
+              {ended ? (
+                <span className="font-medium text-gray-400">Auction Ended</span>
+              ) : (
+                <>
+                  Ends in:{" "}
+                  <span className={`font-medium ${isEndingSoon ? "text-orange-600" : "text-red-700"}`}>
+                    {timeLeft}
+                  </span>
+                </>
+              )}
             </span>
           </div>
         </div>

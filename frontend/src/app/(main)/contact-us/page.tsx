@@ -71,7 +71,7 @@ export default function ContactUs() {
             </p>
 
             <p>
-              <Phone/><span className="font-medium text-gray-800">Phone:</span> +91 9876543210
+              <Phone/><span className="font-medium text-gray-800">Phone:</span> +91 1234567891
             </p>
 
             <p>

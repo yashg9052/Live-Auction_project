@@ -3,7 +3,10 @@ import { sql } from "./config/db.js";
 import { consumeFromQueue } from "./config/rabbitMq.js";
 import { io } from "./config/socket.js";
 import { channel } from "./config/rabbitMq.js";
-import { getHighestBidKey } from "./utils/key.js";
+import { getAuctionDetailKey } from "./utils/key.js";
+import { getDB } from "./config/db.js";
+import { ObjectId } from "mongodb";
+
 export interface AuctionItem {
   auction_status: "ACTIVE" | "ENDED" | "DELETED" | "CANCELLED" | "PAUSED";
   ends_at: Date;
@@ -73,15 +76,10 @@ export const processBids = async () => {
 
       const newBid = result[0];
 
-      const hashKey = getHighestBidKey();
+      const hashKey = getAuctionDetailKey();
       io.to(`auction_${auctionId}`).emit("new-highest-bid", newBid);
-      await redisClient.hSet(hashKey, {
-        [`${auctionId}:amount`]: amount.toString(),
-        [`${auctionId}:userId`]: userId,
-        [`${auctionId}:winningTime`]: createdAt.toISOString(),
-        [`${auctionId}:approvedAt`]: new Date().toISOString(),
-      });
 
+      await redisClient.hDel(hashKey, auctionId);
       console.log(`New highest bid for auction ${auctionId}: ${amount}`);
     } else {
       console.log(
@@ -135,11 +133,14 @@ export const endAuctions = async () => {
       return;
     }
     const finalDataOfAuction = (await sql`
-    UPDATE auctions
-    SET status='ENDED'
-    WHERE id=${auctionId}
-    RETURNING current_highest_bidder_id,current_highest_bidder_username,current_highest_bid
-  `) as FinalDataOfAuction[];
+  UPDATE auction_items
+  SET auction_status = 'ENDED', updated_at = NOW()
+  WHERE id = ${auctionId}
+  RETURNING 
+    current_highest_bidder_id,
+    current_highest_bidder_username,
+    current_highest_bid
+`) as FinalDataOfAuction[];
     const auctionData = finalDataOfAuction[0];
     if (!auctionData) {
       channel.ack(msg);
@@ -153,5 +154,43 @@ export const endAuctions = async () => {
     });
     console.log("Auction ended:", auctionId);
     channel.ack(msg);
+  });
+};
+
+
+
+export const processBanQueue = async () => {
+  if (!channel) return;
+
+  await channel.assertQueue("ban_queue", { durable: true });
+  channel.prefetch(1);
+
+  channel.consume("ban_queue", async (msg) => {
+    if (!msg) return;
+
+    const { userId, banned } = JSON.parse(msg.content.toString());
+    console.log(userId, banned);
+
+    try {
+      const db = getDB();
+
+      const result = await db.collection("users").updateOne(
+        { _id: new ObjectId(userId) },
+        { $set: { banned } }
+      );
+
+      if (result.matchedCount === 0) {
+        throw new Error(`User ${userId} not found in DB`);
+      }
+
+      io.emit("change-ban-status", { userId, banned });
+
+      console.log(`Ban status updated in DB and socket emitted for user ${userId}: ${banned}`);
+      channel.ack(msg);
+
+    } catch (error) {
+      console.error(`Failed to process ban for user ${userId}:`, error);
+      channel.nack(msg, false, true);
+    }
   });
 };

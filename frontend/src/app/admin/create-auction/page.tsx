@@ -2,8 +2,9 @@
 
 import { useState, useRef, useCallback } from "react";
 import Cookies from "js-cookie";
-import { AlertCircle, ArrowLeft } from "lucide-react";
+import { AlertCircle, ArrowLeft, Clock } from "lucide-react";
 import { useRouter } from "next/navigation";
+import toast from "react-hot-toast";
 
 const CATEGORIES = [
   "Electronics",
@@ -122,14 +123,18 @@ export default function CreateAuctionPage() {
       const data: { message: string } = await res.json();
 
       if (!res.ok) {
-        setSubmitError(data.message);
+        toast.error(data.message || "Failed to create auction");
         return;
       }
 
+      toast.success("Auction created successfully! 🎉");
       setForm({ title: "", details: "", startingPrice: "", category: "", endsAt: "", image: null });
       setImagePreview(null);
+      setTimeout(() => router.push("/admin"), 1500);
     } catch {
-      setSubmitError("Something went wrong. Please try again.");
+      const errorMsg = "Something went wrong. Please try again.";
+      toast.error(errorMsg);
+      setSubmitError(errorMsg);
     } finally {
       setIsSubmitting(false);
     }
@@ -312,7 +317,7 @@ export default function CreateAuctionPage() {
 
                 {form.endsAt && !errors.endsAt && (
                   <div className="mt-3.5 bg-[#eef2ff] rounded-[10px] px-4 py-3 flex items-center gap-2.5">
-                    <span className="text-xl">⏱️</span>
+                    <span className="text-xl"><Clock/></span>
                     <div>
                       <p className="m-0 text-[12px] text-[#6366f1] font-semibold">Closes on</p>
                       <p className="m-0 text-sm text-[#3730a3] font-bold">

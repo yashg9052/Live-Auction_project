@@ -49,38 +49,40 @@ export default function AllUsersPage() {
   };
 
   const toggleBan = async (userId: string) => {
-    setBanLoading(userId);
-    try {
-      const res = await fetch(`${SERVER}/api/v1/admin/change-ban-status`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-          token: Cookies.get("token") || "",
-        },
-        body: JSON.stringify({ userId }),
-      });
+  setBanLoading(userId);
+  try {
+    const res = await fetch("http://localhost:5002/api/v1/change-ban-status", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        token: Cookies.get("token") || "",
+      },
+      body: JSON.stringify({ userId }),
+    });
 
-      const data: {
-        message: string;
-        user: { _id: string; banned: boolean; updatedAt: string };
-      } = await res.json();
+    const data: {
+      message: string;
+      userId: string;
+      banned: boolean;
+    } = await res.json();
 
-      if (!res.ok) {
-        setError(data.message);
-        return;
-      }
-
-      setUsers((prev) =>
-        prev.map((u) =>
-          u._id === userId ? { ...u, banned: data.user.banned } : u,
-        ),
-      );
-    } catch {
-      setError("Something went wrong.");
-    } finally {
-      setBanLoading(null);
+    if (!res.ok) {
+      setError(data.message);
+      return;
     }
-  };
+
+    
+    setUsers((prev) =>
+      prev.map((u) =>
+        u._id === userId ? { ...u, banned: data.banned } : u,
+      ),
+    );
+  } catch {
+    setError("Something went wrong.");
+  } finally {
+    setBanLoading(null);
+  }
+};
 
   const filtered = users.filter(
     (u) =>

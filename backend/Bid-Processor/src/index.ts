@@ -3,8 +3,8 @@ import dotenv from "dotenv";
 dotenv.config();
 import { createClient } from "redis";
 import { connectRabbitMq } from "./config/rabbitMq.js";
-import { endAuctions, processBids } from "./Consumer.js";
-import { initDB } from "./config/db.js";
+import { endAuctions, processBanQueue, processBids } from "./Consumer.js";
+import { connectDB, initDB } from "./config/db.js";
 import { app, server } from "./config/socket.js";
 
 app.use(express.json());
@@ -21,10 +21,9 @@ await connectRabbitMq();
 await initDB();
 processBids();
 endAuctions();
-
+processBanQueue();
+connectDB();
 server.listen(PORT, () => {
   console.log(`Listening to port ${PORT}`);
 });
-app.listen(PORT, () => {
-  console.log(`Listening to port ${PORT}`);
-});
+

@@ -1,6 +1,9 @@
-export function getKeyName(...args: string[]) {
-  return `BidBase:${args.join(":")}";
-}
+export const getKeyName = (...args: string[]): string => {
+  return `BidBase:${args.join(":")}`;
+};
+
+  
+
 
 export const getUserKeyName = (id: string) => {
   return getKeyName(id);
@@ -23,4 +26,4 @@ export const getOtpRateLimitKey = () => {
 // Hash key for user list
 export const getUserListKey = () => {
   return "Users:list";
-};
+}

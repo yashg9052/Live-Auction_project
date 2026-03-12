@@ -19,14 +19,13 @@ const CATEGORIES = [
   "Other",
 ];
 
-const STATUSES = ["ACTIVE", "ENDED", "CANCELLED", "PAUSED"];
+const STATUSES = ["ACTIVE","CANCELLED", "PAUSED"];
 
 interface AuctionFormData {
   title: string;
   details: string;
   startingPrice: string;
   category: string;
-  endsAt: string;
   auction_status: string;
   image: File | null;
 }
@@ -64,7 +63,6 @@ export default function UpdateAuctionPage() {
     details: "",
     startingPrice: "",
     category: "",
-    endsAt: "",
     auction_status: "",
     image: null,
   });
@@ -72,9 +70,12 @@ export default function UpdateAuctionPage() {
   const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isEndingNow, setIsEndingNow] = useState(false);
   const [isFetching, setIsFetching] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [submitError, setSubmitError] = useState<string | null>(null);
+  const [auctionEndsAt, setAuctionEndsAt] = useState<string>("");
+  const [auctionStatus, setAuctionStatus] = useState<string>("");
   const [errors, setErrors] = useState<
     Partial<Record<keyof AuctionFormData, string>>
   >({});
@@ -98,18 +99,16 @@ export default function UpdateAuctionPage() {
         }
 
         const a = data.auction;
-        const localDT = a.ends_at
-          ? new Date(a.ends_at).toISOString().slice(0, 16)
-          : "";
         setForm({
           title: a.title ?? "",
           details: a.details ?? "",
           startingPrice: a.starting_price?.toString() ?? "",
           category: a.category ?? "",
-          endsAt: localDT,
           auction_status: a.auction_status ?? "",
           image: null,
         });
+        setAuctionEndsAt(a.ends_at ?? "");
+        setAuctionStatus(a.auction_status ?? "");
         if (a.images?.[0]) setExistingImageUrl(a.images[0]);
       } catch {
         setFetchError("Failed to load auction details.");
@@ -178,7 +177,6 @@ export default function UpdateAuctionPage() {
     )
       newErrors.startingPrice = "Enter a valid starting price.";
     if (!form.category) newErrors.category = "Please select a category.";
-    if (!form.endsAt) newErrors.endsAt = "Auction end date & time is required.";
     if (!form.auction_status)
       newErrors.auction_status = "Please select a status.";
     setErrors(newErrors);
@@ -196,8 +194,8 @@ export default function UpdateAuctionPage() {
       formData.append("details", form.details.trim());
       formData.append("startingPrice", form.startingPrice);
       formData.append("category", form.category);
-      formData.append("endsAt", new Date(form.endsAt).toISOString());
       formData.append("auction_status", form.auction_status);
+      formData.append("endNow", "false");
       if (form.image) formData.append("file", form.image);
 
       const res = await fetch(
@@ -210,12 +208,10 @@ export default function UpdateAuctionPage() {
       );
 
       const data: { message: string } = await res.json();
-
       if (!res.ok) {
         setSubmitError(data.message);
         return;
       }
-
       router.push("/admin/auctions");
     } catch {
       setSubmitError("Something went wrong. Please try again.");
@@ -224,9 +220,45 @@ export default function UpdateAuctionPage() {
     }
   };
 
-  const minDateTime = new Date(Date.now() + 60000).toISOString().slice(0, 16);
+  const handleEndNow = async () => {
+    setIsEndingNow(true);
+    setSubmitError(null);
+    try {
+      const formData = new FormData();
+      formData.append("title", form.title.trim());
+      formData.append("details", form.details.trim());
+      formData.append("startingPrice", form.startingPrice);
+      formData.append("category", form.category);
+      formData.append("auction_status", "ENDED");
+      formData.append("endNow", "true");
+
+      const res = await fetch(
+        `http://localhost:5002/api/v1/update-auction/${id}`,
+        {
+          method: "PATCH",
+          headers: { token: Cookies.get("token") ?? "" },
+          body: formData,
+        },
+      );
+
+      const data: { message: string } = await res.json();
+      if (!res.ok) {
+        setSubmitError(data.message);
+        return;
+      }
+      router.push("/admin/auctions");
+    } catch {
+      setSubmitError("Something went wrong. Please try again.");
+    } finally {
+      setIsEndingNow(false);
+    }
+  };
+
   const inputBase =
     "field-focus w-full px-3.5 py-2.5 rounded-[10px] text-sm text-[#111] bg-[#fafbff]";
+
+  const isAlreadyEnded =
+    auctionStatus === "ENDED" || auctionStatus === "CANCELLED";
 
   if (isFetching) {
     return (
@@ -278,7 +310,9 @@ export default function UpdateAuctionPage() {
         .btn-primary { transition: background 0.18s, transform 0.12s, box-shadow 0.18s; }
         .btn-primary:hover:not(:disabled) { background: #2f4ec9 !important; transform: translateY(-1px); box-shadow: 0 6px 24px rgba(59,91,219,0.35); }
         .btn-primary:active:not(:disabled) { transform: translateY(0); }
-        input[type="datetime-local"]::-webkit-calendar-picker-indicator { opacity: 0.5; cursor: pointer; }
+        .btn-danger { transition: background 0.18s, transform 0.12s, box-shadow 0.18s; }
+        .btn-danger:hover:not(:disabled) { background: #b91c1c !important; transform: translateY(-1px); box-shadow: 0 6px 24px rgba(239,68,68,0.35); }
+        .btn-danger:active:not(:disabled) { transform: translateY(0); }
         @keyframes spin { to { transform: rotate(360deg); } }
         .spinner { animation: spin 0.7s linear infinite; }
       `}</style>
@@ -299,6 +333,23 @@ export default function UpdateAuctionPage() {
             Update Listing
           </h1>
         </div>
+
+        {auctionEndsAt && (
+          <div className="mb-6 bg-[#eef2ff] border border-[#c7d2fe] rounded-xl px-4 py-3 flex items-center gap-2.5">
+            <span className="text-lg">⏱️</span>
+            <div>
+              <p className="m-0 text-[12px] text-[#6366f1] font-semibold">
+                Scheduled to close on
+              </p>
+              <p className="m-0 text-sm text-[#3730a3] font-bold">
+                {new Date(auctionEndsAt).toLocaleString("en-IN", {
+                  dateStyle: "long",
+                  timeStyle: "short",
+                })}
+              </p>
+            </div>
+          </div>
+        )}
 
         {submitError && (
           <div className="mb-6 bg-red-50 border border-red-200 text-red-600 rounded-xl px-4 py-3 text-sm flex items-center gap-2">
@@ -519,79 +570,69 @@ export default function UpdateAuctionPage() {
 
               <div className="bg-white rounded-2xl shadow-[0_2px_16px_rgba(59,91,219,0.07)] p-7">
                 <h2 className="sora text-[17px] font-bold text-[#1e293b] mt-0 mb-5 pb-3.5 border-b border-[#e8edf8]">
-                  Schedule & Status
+                  Status
                 </h2>
+                <label className="block text-[13px] font-semibold text-[#374151] mb-1.5">
+                  Auction Status <span className="text-red-500">*</span>
+                </label>
+                <select
+                  value={form.auction_status}
+                  onChange={(e) =>
+                    setForm((p) => ({ ...p, auction_status: e.target.value }))
+                  }
+                  className={`${inputBase} appearance-none cursor-pointer`}
+                  style={{
+                    border: `1.5px solid ${errors.auction_status ? "#ef4444" : "#d1d5db"}`,
+                    color: form.auction_status ? "#111" : "#9ca3af",
+                  }}
+                >
+                  <option value="" disabled>
+                    Select status...
+                  </option>
+                  {STATUSES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                {errors.auction_status && (
+                  <p className="text-red-500 text-[12px] mt-1 mb-0">
+                    {errors.auction_status}
+                  </p>
+                )}
+              </div>
 
-                <div className="mb-[18px]">
-                  <label className="block text-[13px] font-semibold text-[#374151] mb-1.5">
-                    Auction Ends At <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="datetime-local"
-                    min={minDateTime}
-                    value={form.endsAt}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, endsAt: e.target.value }))
-                    }
-                    className={inputBase}
+              {!isAlreadyEnded && (
+                <div className="bg-white rounded-2xl shadow-[0_2px_16px_rgba(239,68,68,0.08)] p-7 border border-red-100">
+                  <h2 className="sora text-[17px] font-bold text-[#1e293b] mt-0 mb-2 pb-3.5 border-b border-red-100">
+                    Danger Zone
+                  </h2>
+                  <p className="text-[13px] text-[#64748b] mt-3 mb-4">
+                    Immediately close this auction. This will trigger winner
+                    resolution and cannot be undone.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleEndNow}
+                    disabled={isEndingNow || isSubmitting}
+                    className="btn-danger sora w-full px-6 py-3 rounded-[12px] text-sm font-bold text-white border-none flex items-center justify-center gap-2"
                     style={{
-                      border: `1.5px solid ${errors.endsAt ? "#ef4444" : "#d1d5db"}`,
-                    }}
-                  />
-                  {errors.endsAt && (
-                    <p className="text-red-500 text-[12px] mt-1 mb-0">
-                      {errors.endsAt}
-                    </p>
-                  )}
-                  {form.endsAt && !errors.endsAt && (
-                    <div className="mt-3 bg-[#eef2ff] rounded-[10px] px-4 py-3 flex items-center gap-2.5">
-                      <span className="text-lg">⏱️</span>
-                      <div>
-                        <p className="m-0 text-[12px] text-[#6366f1] font-semibold">
-                          Closes on
-                        </p>
-                        <p className="m-0 text-sm text-[#3730a3] font-bold">
-                          {new Date(form.endsAt).toLocaleString("en-IN", {
-                            dateStyle: "long",
-                            timeStyle: "short",
-                          })}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-[13px] font-semibold text-[#374151] mb-1.5">
-                    Auction Status <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={form.auction_status}
-                    onChange={(e) =>
-                      setForm((p) => ({ ...p, auction_status: e.target.value }))
-                    }
-                    className={`${inputBase} appearance-none cursor-pointer`}
-                    style={{
-                      border: `1.5px solid ${errors.auction_status ? "#ef4444" : "#d1d5db"}`,
-                      color: form.auction_status ? "#111" : "#9ca3af",
+                      background: isEndingNow ? "#fca5a5" : "#ef4444",
+                      cursor:
+                        isEndingNow || isSubmitting ? "not-allowed" : "pointer",
                     }}
                   >
-                    <option value="" disabled>
-                      Select status...
-                    </option>
-                    {STATUSES.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                  {errors.auction_status && (
-                    <p className="text-red-500 text-[12px] mt-1 mb-0">
-                      {errors.auction_status}
-                    </p>
-                  )}
+                    {isEndingNow ? (
+                      <>
+                        <span className="spinner inline-block w-4 h-4 rounded-full border-2 border-white/40 border-t-white" />
+                        Ending Auction...
+                      </>
+                    ) : (
+                      "End Auction Now"
+                    )}
+                  </button>
                 </div>
-              </div>
+              )}
 
               {(form.title || form.startingPrice) && (
                 <div className="bg-gradient-to-br from-[#eef2ff] to-[#f0f7ff] rounded-2xl shadow-[0_2px_16px_rgba(59,91,219,0.07)] p-[22px] border border-[#c7d2fe]">
@@ -614,11 +655,11 @@ export default function UpdateAuctionPage() {
           <div className="mt-8">
             <button
               type="submit"
-              disabled={isSubmitting}
+              disabled={isSubmitting || isEndingNow}
               className="btn-primary sora w-full px-8 py-4 rounded-[14px] text-base font-bold text-white border-none flex items-center justify-center gap-2.5 tracking-tight"
               style={{
                 background: isSubmitting ? "#93a8f4" : "#3b5bdb",
-                cursor: isSubmitting ? "not-allowed" : "pointer",
+                cursor: isSubmitting || isEndingNow ? "not-allowed" : "pointer",
               }}
             >
               {isSubmitting ? (

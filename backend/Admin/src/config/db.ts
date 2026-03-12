@@ -1,7 +1,7 @@
 import { neon } from "@neondatabase/serverless";
 import dotenv from "dotenv";
 dotenv.config();
-
+import { Db,MongoClient } from "mongodb";
 export const sql = neon(process.env.DB_URL as string);
 
 export async function initDB() {
@@ -20,7 +20,7 @@ export async function initDB() {
   END $$;
 `;
 
-await sql`
+    await sql`
   CREATE TABLE IF NOT EXISTS auction_items (
     id SERIAL PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
@@ -38,10 +38,32 @@ await sql`
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
   );
 `;
-  
+
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Error initializing DB:", error);
   }
 }
+const client = new MongoClient(process.env.MONGO_URI as string);
+let db: Db | null = null;
 
+export const connectDB = async (): Promise<Db> => {
+  if (db) return db;
+  await client.connect();
+  db = client.db("auction_system"); 
+  console.log("✅ MongoDB connected");
+  return db;
+};
+
+export const getDB = (): Db => {
+  if (!db) throw new Error("MongoDB not initialized. Call connectDB() first.");
+  return db;
+};
+
+export const closeDB = async (): Promise<void> => {
+  if (client) {
+    await client.close();
+    db = null;
+    console.log("MongoDB connection closed");
+  }
+};

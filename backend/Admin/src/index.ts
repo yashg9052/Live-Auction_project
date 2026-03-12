@@ -3,7 +3,7 @@ import dotenv from "dotenv";
 dotenv.config();
 import cors from "cors"
 import adminRouter from "./Routes/admin.js";
-import { initDB } from "./config/db.js";
+import { connectDB, initDB } from "./config/db.js";
 import { setupcloudinary } from "./config/cloudinary.js";
 import { createClient } from "redis";
 import { connectRabbitMq } from "./config/rabbitMq.js";
@@ -34,6 +34,7 @@ app.use(
     origin: "http://localhost:3000",
   }),
 );
+await connectDB();
 app.use("/api/v1", adminRouter);
 
 app.listen(PORT, () => {

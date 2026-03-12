@@ -11,3 +11,6 @@ export const getHighestBidKey = () => {
 export const getAuctionBidField = (auctionId: string | number) => {
   return auctionId.toString();
 };
+export const getAuctionDetailKey = () => {
+  return getKeyName("auction", "detail");
+};
