@@ -1,0 +1,1 @@
+{"version":3,"file":"rateLimitByIp.d.ts","sourceRoot":"","sources":["../../src/Middleware/rateLimitByIp.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,YAAY,EAAE,QAAQ,EAAE,OAAO,EAAE,MAAM,SAAS,CAAC;AAI/D,eAAO,MAAM,aAAa,GACxB,KAAK,OAAO,EACZ,KAAK,QAAQ,EACb,MAAM,YAAY,KACjB,OAAO,CAAC,IAAI,CAoCd,CAAC"}
