@@ -1,5 +1,5 @@
-Auction System Project
-Description
+BidBase (Auction System Project)
+
 
 This project is a full-stack online auction platform built using a microservices architecture. The system allows users to participate in auctions by placing bids in real time, while admin can manage and create auctions through a dedicated admin dashboard.
 
