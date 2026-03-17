@@ -10,6 +10,10 @@ const STATUS_STYLES: Record<BidItem["status"], string> = {
   outbid: "bg-red-500 text-white",
   won: "bg-blue-500 text-white",
 };
+<<<<<<< HEAD
+=======
+const auction_server = "http://13.60.64.102:5003";
+>>>>>>> e8c10dd (Final Commit)
 
 function BidCard({ item }: { item: BidItem }) {
   return (

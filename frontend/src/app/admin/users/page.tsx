@@ -6,7 +6,13 @@ import { IUser } from "@/src/context/AuctionContext";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+<<<<<<< HEAD
 const SERVER = "http://localhost:5000";
+=======
+const user_server = "http://13.60.64.102:5000";
+const SERVER=user_server
+const admin_server="http://13.60.64.102:5002"
+>>>>>>> e8c10dd (Final Commit)
 
 export default function AllUsersPage() {
   const router = useRouter();

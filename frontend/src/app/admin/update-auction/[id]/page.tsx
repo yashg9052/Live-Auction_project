@@ -4,8 +4,14 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { AlertCircle, ArrowLeft } from "lucide-react";
+<<<<<<< HEAD
 const SERVER = "http://localhost:5003";
 
+=======
+const AUCTION_SERVER = "http://13.60.64.102:5003";
+const SERVER=AUCTION_SERVER;
+const admin_server="http://13.60.64.102:5002"
+>>>>>>> e8c10dd (Final Commit)
 const CATEGORIES = [
   "Electronics",
   "Fashion & Apparel",

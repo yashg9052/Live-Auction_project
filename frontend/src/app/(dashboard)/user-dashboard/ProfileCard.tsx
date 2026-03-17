@@ -46,7 +46,11 @@ export default function ProfileCard() {
       }
 
       const response = await fetch(
+<<<<<<< HEAD
         "http://localhost:5000/api/v1/user/logout",
+=======
+        "http://13.60.64.102:5000/api/v1/user/logout",
+>>>>>>> e8c10dd (Final Commit)
         {
           method: "POST",
           headers: {

@@ -64,7 +64,11 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       setError(null);
+<<<<<<< HEAD
       const res = await fetch("http://localhost:5000/api/v1/user/register/send-otp", {
+=======
+      const res = await fetch("http://13.60.64.102:5000/api/v1/user/register/send-otp", {
+>>>>>>> e8c10dd (Final Commit)
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
@@ -91,7 +95,11 @@ export default function RegisterPage() {
     setTimer(60);
     setCanResend(false);
     try {
+<<<<<<< HEAD
       const res = await fetch("http://localhost:5000/api/v1/user/register/send-otp", {
+=======
+      const res = await fetch("http://13.60.64.102:5000/api/v1/user/register/send-otp", {
+>>>>>>> e8c10dd (Final Commit)
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim() }),
@@ -114,7 +122,11 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       setError(null);
+<<<<<<< HEAD
       const res = await fetch("http://localhost:5000/api/v1/user/register/verify-otp", {
+=======
+      const res = await fetch("http://13.60.64.102:5000/api/v1/user/register/verify-otp", {
+>>>>>>> e8c10dd (Final Commit)
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), otp }),
@@ -141,7 +153,11 @@ export default function RegisterPage() {
     try {
       setLoading(true);
       setError(null);
+<<<<<<< HEAD
       const res = await fetch("http://localhost:5000/api/v1/user/register", {
+=======
+      const res = await fetch("http://13.60.64.102:5000/api/v1/user/register", {
+>>>>>>> e8c10dd (Final Commit)
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), name: username, password }),

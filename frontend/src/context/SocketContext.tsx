@@ -16,7 +16,11 @@ const SocketContext = createContext<ISocketContext>({
 export const SocketProvider = ({ children }: ProviderProps) => {
   const [socket, setSocket] = useState<Socket | null>(null);
   const { user } = useAuctionData();
+<<<<<<< HEAD
   const Bid_Processor_Service = "http://localhost:5005";
+=======
+  const Bid_Processor_Service = "http://13.60.64.102:5005";
+>>>>>>> e8c10dd (Final Commit)
   useEffect(() => {
     if (!user?._id) return;
     const newSocket = io(Bid_Processor_Service, {
