@@ -56,7 +56,9 @@ function useCountdown(endsAt: string) {
 }
 
 async function fetchAuctionDetail(id: string | number): Promise<AuctionDetail> {
+
   const res = await fetch(`http://13.60.64.102:5003/api/v1/auction/${id}`);
+
   const data: { message: string; auction: AuctionDetail } = await res.json();
   if (!res.ok) throw new Error(data.message);
   return data.auction;
@@ -259,7 +261,9 @@ export default function AuctionDetailPage({
     }
 
     try {
+
       const res = await fetch("http://13.60.64.102:5004/api/v1/bid/make", {
+
         method: "POST",
         headers: {
           "Content-Type": "application/json",

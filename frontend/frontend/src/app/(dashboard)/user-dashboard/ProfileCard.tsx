@@ -46,7 +46,9 @@ export default function ProfileCard() {
       }
 
       const response = await fetch(
+
         "http://13.60.64.102:5000/api/v1/user/logout",
+
         {
           method: "POST",
           headers: {

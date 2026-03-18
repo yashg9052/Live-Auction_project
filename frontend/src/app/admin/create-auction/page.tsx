@@ -18,10 +18,9 @@ const CATEGORIES = [
   "Musical Instruments",
   "Other",
 ];
-<<<<<<< HEAD
-=======
+
 const admin_server="http://13.60.64.102:5002"
->>>>>>> e8c10dd (Final Commit)
+
 
 interface AuctionFormData {
   title: string;

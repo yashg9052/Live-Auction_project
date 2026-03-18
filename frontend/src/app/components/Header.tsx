@@ -13,8 +13,15 @@ const navLinks = [
   { label: "Contact-us", href: "/contact-us" },
 ];
 
-const mobileMenuLinks = [
+const loggedInMobileLinks = [
   { label: "Profile", href: "/user-dashboard" },
+  { label: "How It Works", href: "/how-it-works" },
+  { label: "Contact Us", href: "/contact-us" },
+];
+
+const loggedOutMobileLinks = [
+  { label: "Login", href: "/login" },
+  { label: "Register", href: "/register" },
   { label: "How It Works", href: "/how-it-works" },
   { label: "Contact Us", href: "/contact-us" },
 ];
@@ -23,6 +30,8 @@ export default function Header() {
   const { isLoggedIn, isAdmin, loading, user } = useAuctionData();
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const mobileLinks = isLoggedIn ? loggedInMobileLinks : loggedOutMobileLinks;
 
   return (
     <header className="w-full border-b border-gray-200 bg-[#155dfc30] h-16">
@@ -72,58 +81,28 @@ export default function Header() {
                 )}
               </button>
 
-              {isMenuOpen && (
+              {isMenuOpen && !loading && (
                 <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
-                  {(isLoggedIn&&!loading) && (
-                    <>
-                      {mobileMenuLinks.map((link) => (
-                        <Link
-                          key={link.href}
-                          href={link.href}
-                          onClick={() => setIsMenuOpen(false)}
-                          className={`block px-4 py-2.5 text-sm transition-colors ${
-                            pathname === link.href
-                              ? "text-blue-600 font-semibold bg-blue-50"
-                              : "text-gray-600 hover:bg-gray-100"
-                          }`}
-                        >
-                          {link.label}
-                        </Link>
-                      ))}
-                    </>
-                  )}
-                  {!isLoggedIn && (
-                    <>
-                      <Link
-                        href="/how-it-works"
-                        onClick={() => setIsMenuOpen(false)}
-                        className={`block px-4 py-2.5 text-sm transition-colors ${
-                          pathname === "/how-it-works"
-                            ? "text-blue-600 font-semibold bg-blue-50"
-                            : "text-gray-600 hover:bg-gray-100"
-                        }`}
-                      >
-                        How It Works
-                      </Link>
-                      <Link
-                        href="/contact-us"
-                        onClick={() => setIsMenuOpen(false)}
-                        className={`block px-4 py-2.5 text-sm transition-colors ${
-                          pathname === "/contact-us"
-                            ? "text-blue-600 font-semibold bg-blue-50"
-                            : "text-gray-600 hover:bg-gray-100"
-                        }`}
-                      >
-                        Contact Us
-                      </Link>
-                    </>
-                  )}
+                  {mobileLinks.map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setIsMenuOpen(false)}
+                      className={`block px-4 py-2.5 text-sm transition-colors ${
+                        pathname === link.href
+                          ? "text-blue-600 font-semibold bg-blue-50"
+                          : "text-gray-600 hover:bg-gray-100"
+                      }`}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
                 </div>
               )}
             </div>
           )}
 
-          {!isLoggedIn && !loading? (
+          {!isLoggedIn && !loading ? (
             <div className="gap-3 sm:gap-4 hidden min-[750px]:flex">
               <Link
                 href="/login"

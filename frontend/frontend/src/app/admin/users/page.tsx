@@ -6,9 +6,11 @@ import { IUser } from "@/src/context/AuctionContext";
 import { AlertCircle, ArrowLeft } from "lucide-react";
 import { useRouter } from "next/navigation";
 
+
 const user_server = "http://13.60.64.102:5000";
 const SERVER=user_server
 const admin_server="http://13.60.64.102:5002"
+
 
 export default function AllUsersPage() {
   const router = useRouter();
@@ -53,7 +55,7 @@ export default function AllUsersPage() {
   const toggleBan = async (userId: string) => {
   setBanLoading(userId);
   try {
-    const res = await fetch(`${admin_server}/api/v1/change-ban-status`, {
+    const res = await fetch("http://localhost:5002/api/v1/change-ban-status", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

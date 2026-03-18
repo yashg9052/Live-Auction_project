@@ -4,9 +4,12 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Cookies from "js-cookie";
 import { AlertCircle, ArrowLeft } from "lucide-react";
+
+
 const AUCTION_SERVER = "http://13.60.64.102:5003";
 const SERVER=AUCTION_SERVER;
 const admin_server="http://13.60.64.102:5002"
+
 const CATEGORIES = [
   "Electronics",
   "Fashion & Apparel",
@@ -200,7 +203,7 @@ export default function UpdateAuctionPage() {
       if (form.image) formData.append("file", form.image);
 
       const res = await fetch(
-        `${admin_server}/api/v1/update-auction/${id}`,
+        `http://localhost:5002/api/v1/update-auction/${id}`,
         {
           method: "PATCH",
           headers: { token: Cookies.get("token") ?? "" },
@@ -234,7 +237,7 @@ export default function UpdateAuctionPage() {
       formData.append("endNow", "true");
 
       const res = await fetch(
-        `${admin_server}/api/v1/update-auction/${id}`,
+        `http://localhost:5002/api/v1/update-auction/${id}`,
         {
           method: "PATCH",
           headers: { token: Cookies.get("token") ?? "" },

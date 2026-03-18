@@ -1,8 +1,14 @@
-"use client";
-
 import type { Metadata } from "next";
 import "./globals.css";
 import { Toaster } from "react-hot-toast";
+
+export const metadata: Metadata = {
+  title: {
+    default: "BidBase",
+    template: "%s | BidBase",
+  },
+  description: "Online Auction Platform",
+};
 
 export default function RootLayout({
   children,

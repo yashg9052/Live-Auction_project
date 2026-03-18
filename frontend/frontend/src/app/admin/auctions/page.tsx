@@ -33,7 +33,9 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> =
     PAUSED: { bg: "bg-blue-50", text: "text-blue-600", dot: "bg-blue-400" },
     DELETED: { bg: "bg-zinc-100", text: "text-zinc-400", dot: "bg-zinc-300" },
   };
+
 const admin_server="http://13.60.64.102:5002"
+
 export default function AllAuctionsPage() {
   const router = useRouter();
   const [auctions, setAuctions] = useState<IAuction[]>([]);
@@ -75,7 +77,7 @@ export default function AllAuctionsPage() {
     setDeleteError(null);
     try {
       const res = await fetch(
-        `${admin_server}/api/v1/delete-auction/${id}`,
+        `http://localhost:5002/api/v1/delete-auction/${id}`,
         {
           method: "DELETE",
           headers: { token: Cookies.get("token") || "" },

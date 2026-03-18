@@ -56,11 +56,9 @@ export default function VerifyUser() {
     }
 
     try {
-<<<<<<< HEAD
-      const res = await fetch(`http://localhost:5000/api/v1/user/verify-user`, {
-=======
+
       const res = await fetch(`http://13.60.64.102:5000/api/v1/user/verify-user`, {
->>>>>>> e8c10dd (Final Commit)
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, otp }),
@@ -87,11 +85,9 @@ export default function VerifyUser() {
     setCanResend(false);
 
     try {
-<<<<<<< HEAD
-      const res = await fetch("http://localhost:5000/api/v1/user/forgot-password", {
-=======
+
       const res = await fetch("http://13.60.64.102:5000/api/v1/user/forgot-password", {
->>>>>>> e8c10dd (Final Commit)
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

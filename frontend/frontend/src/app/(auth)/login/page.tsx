@@ -47,7 +47,9 @@ const LoginPage = () => {
       setLoading(true);
       setError(null);
 
+
       const LOGIN_SERVER = "http://13.60.64.102:5000";
+
 
       const response = await fetch(`${LOGIN_SERVER}/api/v1/user/login`, {
         method: "POST",

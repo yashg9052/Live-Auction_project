@@ -34,13 +34,13 @@ const HomeMainContent = () => {
     { label: "Ended", value: "ENDED" },
   ];
 
-  // ✅ Fixed: 1 hour threshold, uses ends_at consistently
+
   function isEndingSoon(endsAt: string): boolean {
     const diff = new Date(endsAt).getTime() - Date.now();
     return diff > 0 && diff <= 60 * 60 * 1000;
   }
 
-  // ✅ Proper countdown label for AuctionCard
+
   function getCountdownLabel(endsAt: string): string {
     const diff = new Date(endsAt).getTime() - Date.now();
     if (diff <= 0) return "Ended";
@@ -168,7 +168,7 @@ const HomeMainContent = () => {
       activeStatus === "ALL"
         ? true
         : activeStatus === "ENDING_SOON"
-          // ✅ Fixed: use ends_at (consistent with the rest of the codebase)
+         
           ? a.auction_status === "ACTIVE" && isEndingSoon(a.ends_at)
           : a.auction_status === activeStatus;
     return matchSearch && matchCategory && matchStatus;

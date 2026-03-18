@@ -63,15 +63,17 @@ interface AuctionContextType {
 interface AuctionContextProviderProps {
   children: ReactNode;
 }
+
 const auction_server = "http://13.60.64.102:5003";
-export const server=auction_server;
+export const server = auction_server;
+
+const user_server = "http://13.60.64.102:5000";
 
 const AuctionContext = createContext<AuctionContextType | undefined>(undefined);
 
 export const AuctionProvider: React.FC<AuctionContextProviderProps> = ({
   children,
 }) => {
-  
   const router = useRouter();
 
   const [user, setUser] = useState<IUser | null>(null);
@@ -85,7 +87,6 @@ export const AuctionProvider: React.FC<AuctionContextProviderProps> = ({
   ]);
 
   const fetchUser = async (token: string) => {
-    const user_server = "http://13.60.64.102:5000";
     try {
       const res = await fetch(`${user_server}/api/v1/user/profile`, {
         headers: { token },

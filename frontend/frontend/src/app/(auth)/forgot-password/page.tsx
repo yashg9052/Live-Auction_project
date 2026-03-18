@@ -21,7 +21,9 @@ export default function ForgotPassword() {
     setError("");
 
     try {
+
       const res = await fetch("http://13.60.64.102:5000/api/v1/user/forgot-password", {
+
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),

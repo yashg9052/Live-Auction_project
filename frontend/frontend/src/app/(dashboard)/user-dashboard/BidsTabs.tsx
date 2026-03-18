@@ -10,7 +10,9 @@ const STATUS_STYLES: Record<BidItem["status"], string> = {
   outbid: "bg-red-500 text-white",
   won: "bg-blue-500 text-white",
 };
+
 const auction_server = "http://13.60.64.102:5003";
+
 
 function BidCard({ item }: { item: BidItem }) {
   return (
@@ -48,11 +50,11 @@ function ListSkeleton() {
 }
 
 
-
 // API Functions
 const getActiveBidsFromAPI = async (): Promise<BidItem[]> => {
   try {
     const token = Cookies.get("token");
+    const auction_server = "http://localhost:5003";
     const response = await fetch(`${auction_server}/api/v1/active-bids`, {
       method: "GET",
       headers: {
@@ -72,7 +74,7 @@ const getActiveBidsFromAPI = async (): Promise<BidItem[]> => {
 const getWonItemsFromAPI = async (): Promise<BidItem[]> => {
   try {
     const token = Cookies.get("token");
-    
+    const auction_server = "http://localhost:5003"; 
     const response = await fetch(`${auction_server}/api/v1/won-items`, {
       method: "GET",
       headers: {

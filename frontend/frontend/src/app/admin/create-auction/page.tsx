@@ -18,7 +18,9 @@ const CATEGORIES = [
   "Musical Instruments",
   "Other",
 ];
+
 const admin_server="http://13.60.64.102:5002"
+
 
 interface AuctionFormData {
   title: string;
@@ -115,7 +117,7 @@ export default function CreateAuctionPage() {
       formData.append("category", form.category);
       formData.append("endsAt", new Date(form.endsAt).toISOString());
 
-      const res = await fetch(`${admin_server}/api/v1/create-auction`, {
+      const res = await fetch("http://localhost:5002/api/v1/create-auction", {
         method: "POST",
         headers: { token: Cookies.get("token") ?? "" },
         body: formData,

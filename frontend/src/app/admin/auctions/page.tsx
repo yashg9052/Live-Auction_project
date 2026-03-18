@@ -33,11 +33,9 @@ const STATUS_STYLES: Record<string, { bg: string; text: string; dot: string }> =
     PAUSED: { bg: "bg-blue-50", text: "text-blue-600", dot: "bg-blue-400" },
     DELETED: { bg: "bg-zinc-100", text: "text-zinc-400", dot: "bg-zinc-300" },
   };
-<<<<<<< HEAD
 
-=======
 const admin_server="http://13.60.64.102:5002"
->>>>>>> e8c10dd (Final Commit)
+
 export default function AllAuctionsPage() {
   const router = useRouter();
   const [auctions, setAuctions] = useState<IAuction[]>([]);
