@@ -203,7 +203,7 @@ export default function UpdateAuctionPage() {
       if (form.image) formData.append("file", form.image);
 
       const res = await fetch(
-        `http://localhost:5002/api/v1/update-auction/${id}`,
+        `http://13.60.64.102:5002/api/v1/update-auction/${id}`,
         {
           method: "PATCH",
           headers: { token: Cookies.get("token") ?? "" },
@@ -237,7 +237,7 @@ export default function UpdateAuctionPage() {
       formData.append("endNow", "true");
 
       const res = await fetch(
-        `http://localhost:5002/api/v1/update-auction/${id}`,
+        `http://13.60.64.102:5002/api/v1/update-auction/${id}`,
         {
           method: "PATCH",
           headers: { token: Cookies.get("token") ?? "" },

@@ -55,7 +55,7 @@ export default function AllUsersPage() {
   const toggleBan = async (userId: string) => {
   setBanLoading(userId);
   try {
-    const res = await fetch("http://localhost:5002/api/v1/change-ban-status", {
+    const res = await fetch("http://13.60.64.102:5002/api/v1/change-ban-status", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

@@ -54,7 +54,7 @@ function ListSkeleton() {
 const getActiveBidsFromAPI = async (): Promise<BidItem[]> => {
   try {
     const token = Cookies.get("token");
-    const auction_server = "http://localhost:5003";
+    const auction_server = "http://13.60.64.102:5003";
     const response = await fetch(`${auction_server}/api/v1/active-bids`, {
       method: "GET",
       headers: {
@@ -74,7 +74,7 @@ const getActiveBidsFromAPI = async (): Promise<BidItem[]> => {
 const getWonItemsFromAPI = async (): Promise<BidItem[]> => {
   try {
     const token = Cookies.get("token");
-    const auction_server = "http://localhost:5003"; 
+    const auction_server = "http://13.60.64.102:5003"; 
     const response = await fetch(`${auction_server}/api/v1/won-items`, {
       method: "GET",
       headers: {

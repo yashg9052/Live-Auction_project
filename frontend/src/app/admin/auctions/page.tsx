@@ -77,7 +77,7 @@ export default function AllAuctionsPage() {
     setDeleteError(null);
     try {
       const res = await fetch(
-        `http://localhost:5002/api/v1/delete-auction/${id}`,
+        `http://13.60.64.102:5002/api/v1/delete-auction/${id}`,
         {
           method: "DELETE",
           headers: { token: Cookies.get("token") || "" },
